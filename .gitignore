@@ -1,0 +1,14 @@
+.context/
+.env
+.env.*
+!.env.example
+bin/
+coverage.out
+webui/node_modules/
+webui/dist/*
+!webui/dist/.gitkeep
+webui/*.tsbuildinfo
+.pnpm-store/
+artifacts/
+.DS_Store
+codedb.snapshot

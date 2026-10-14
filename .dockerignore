@@ -1,0 +1,12 @@
+.git
+.context
+.env
+.env.*
+bin
+webui/node_modules
+webui/dist
+webui/*.tsbuildinfo
+.pnpm-store
+artifacts
+coverage.out
+codedb.snapshot
