@@ -48,13 +48,24 @@ are rejected.
 
 PostgreSQL enforces these rules for API and direct SQL writes. Structural mutations
 are serialized with a transaction advisory lock and must use READ COMMITTED isolation.
-Deferred validation checks the final transaction state. Installation snapshots are
-created by the database; installations are removed by setting `removed_at`, preserving
-history. Referenced BOM rows cannot be deleted or changed to a different child SKU.
+Cycle checks are immediate, since a cycle never needs a transient violation; the
+remaining checks are deferred and validate the final transaction state, so one
+transaction may lower a slot quantity and remove an installation in either order.
+Installation snapshots are created by the database; installations are removed by
+setting `removed_at`, preserving history. Referenced BOM rows cannot be deleted or
+changed to a different child SKU.
 
-Deferred checks currently validate the full graph, so large batch imports may need
-a future optimization. Database dumps containing installation history must be
-restored by an authorized database owner with triggers disabled during restoration.
+Every check is scoped to the rows the statement touched, and an edit that cannot
+break an invariant runs no check at all. Ownership-cycle detection costs assembly
+nesting depth and does not grow with inventory size. BOM-cycle detection costs one
+pass over the `part_components` rows reachable below the edited child, so it still
+grows with catalog size, just no longer with the number of rows written. One
+consequence of scoping: a write no longer detects a pre-existing violation
+elsewhere in the database. `SELECT * FROM papi2_audit_structure()` reports any
+whole-graph violation by constraint name and returns no rows when the database is
+clean — use it after restoring a dump. Database dumps containing installation
+history must be restored by an authorized database owner with triggers disabled
+during restoration.
 
 Archiving an item requires removing its active parent and children first. Archiving a
 Part requires archiving its items and removing references from active parent BOMs.
