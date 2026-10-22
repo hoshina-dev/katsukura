@@ -6,15 +6,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"testing/fstest"
 )
 
-func TestHTTPValidationAndSPABoundaries(t *testing.T) {
-	app := NewApp(nil, func(context.Context) error { return nil }, fstest.MapFS{"index.html": {Data: []byte("<html>UI</html>")}, "assets/app.js": {Data: []byte("app")}, ".gitkeep": {Data: []byte("hidden")}})
+func TestHTTPValidationAndNotFound(t *testing.T) {
+	app := NewApp(nil, func(context.Context) error { return nil })
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
-	}{{"GET", "/api/missing", "", 404}, {"GET", "/api", "", 404}, {"GET", "/API/unknown", "", 404}, {"GET", "/parts/deep", "", 200}, {"GET", "/missing.js", "", 404}, {"GET", "/.gitkeep", "", 404}, {"GET", "/healthz", "", 200}, {"GET", "/readyz", "", 200}, {"GET", "/api/v1/parts?limit=0", "", 400}, {"GET", "/api/v1/parts?offset=-1", "", 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","metadata":null}`, 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","id":"x"}`, 400}, {"GET", "/api/v1/inventory/bad", "", 400}} {
+	}{{"GET", "/api/missing", "", 404}, {"GET", "/api", "", 404}, {"GET", "/API/unknown", "", 404}, {"GET", "/", "", 404}, {"GET", "/inventory", "", 404}, {"GET", "/healthz", "", 200}, {"GET", "/readyz", "", 200}, {"GET", "/api/v1/parts?limit=0", "", 400}, {"GET", "/api/v1/parts?offset=-1", "", 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","metadata":null}`, 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","id":"x"}`, 400}, {"GET", "/api/v1/inventory/bad", "", 400}} {
 		t.Run(tc.path+tc.body, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -35,7 +34,7 @@ func TestHTTPValidationAndSPABoundaries(t *testing.T) {
 }
 
 func TestRejectsCrossSiteJSONBody(t *testing.T) {
-	app := NewApp(nil, nil, nil)
+	app := NewApp(nil, nil)
 	for _, method := range []string{"POST", "PATCH"} {
 		path := "/api/v1/parts"
 		if method == "PATCH" {

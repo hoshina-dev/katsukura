@@ -237,7 +237,7 @@ func TestInventoryLifecycleAndConcurrentQuantity(t *testing.T) {
 			t.Fatalf("list pagination failed %+v %v", page, e)
 		}
 	}
-	app := routes.NewApp(s, func(context.Context) error { return nil }, nil)
+	app := routes.NewApp(s, func(context.Context) error { return nil })
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
@@ -348,7 +348,7 @@ func TestPartParentUsages(t *testing.T) {
 			t.Fatalf("active parent incorrect: %+v", edge.ParentPart)
 		}
 	}
-	app := routes.NewApp(s, func(context.Context) error { return nil }, nil)
+	app := routes.NewApp(s, func(context.Context) error { return nil })
 	res, e := app.Test(httptest.NewRequest("GET", "/api/v1/parts/"+child.ID.String(), nil))
 	if e != nil {
 		t.Fatal(e)

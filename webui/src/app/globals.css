@@ -1,0 +1,8 @@
+.catalog-card {
+  transition: border-color 120ms ease;
+}
+
+.catalog-card-link:hover .catalog-card,
+.catalog-card-link:focus-visible .catalog-card {
+  border-color: var(--mantine-color-gray-5);
+}

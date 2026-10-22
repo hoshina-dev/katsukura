@@ -1,4 +1,4 @@
-.PHONY: install run build test test-integration test-all lint webui-install webui-dev webui-build webui-check webui-test docker-build
+.PHONY: install run build test test-integration test-all lint webui-install webui-dev webui-build webui-start webui-check webui-test docker-build
 
 install:
 	go mod download
@@ -14,7 +14,9 @@ webui-dev: webui-install
 
 webui-build: webui-install
 	cd webui && pnpm build
-	touch webui/dist/.gitkeep
+
+webui-start: webui-build
+	cd webui && pnpm start
 
 webui-check: webui-install
 	cd webui && pnpm check
@@ -22,7 +24,7 @@ webui-check: webui-install
 webui-test: webui-install
 	cd webui && pnpm test
 
-build: webui-build
+build:
 	mkdir -p bin
 	go build -o bin/papi2 ./cmd/server
 
@@ -39,3 +41,4 @@ lint:
 
 docker-build:
 	docker build -t papi2:local .
+	docker build -t papi2-webui:local webui

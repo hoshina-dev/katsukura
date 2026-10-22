@@ -64,7 +64,7 @@ func realAPI(t *testing.T) *fiber.App {
 	if err = database.Migrate(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-	return routes.NewApp(services.New(repositories.New(db)), pool.PingContext, nil)
+	return routes.NewApp(services.New(repositories.New(db)), pool.PingContext)
 }
 
 func request(t *testing.T, app *fiber.App, method, path string, body any, status int) map[string]any {

@@ -5,13 +5,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/hoshina-dev/papi2/internal/handlers"
-	"io/fs"
-	"mime"
-	"path"
-	"strings"
 )
 
-func NewApp(api handlers.API, ready func(context.Context) error, assets fs.FS) *fiber.App {
+func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
 	app := fiber.New(fiber.Config{ErrorHandler: handlers.ErrorHandler, BodyLimit: 1024 * 1024})
 	app.Use(recover.New())
 	h := handlers.New(api)
@@ -45,48 +41,6 @@ func NewApp(api handlers.API, ready func(context.Context) error, assets fs.FS) *
 	i.Get("/:id/tree", h.Tree)
 	i.Post("/:id/components", h.Install)
 	i.Delete("/:id/components/:installationID", h.Remove)
-	app.Use(func(c *fiber.Ctx) error {
-		p := c.Path()
-		reserved := strings.ToLower(p)
-		if reserved == "/api" || strings.HasPrefix(reserved, "/api/") || strings.HasPrefix(reserved, "/healthz") || strings.HasPrefix(reserved, "/readyz") {
-			return fiber.ErrNotFound
-		}
-		if (c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead) || assets == nil {
-			return fiber.ErrNotFound
-		}
-		name := strings.TrimPrefix(path.Clean(p), "/")
-		if name == "." || name == "" {
-			name = "index.html"
-		}
-		if name != "index.html" && !strings.HasPrefix(name, "assets/") && name != "favicon.ico" && name != "robots.txt" {
-			if path.Ext(name) != "" {
-				return fiber.ErrNotFound
-			}
-			name = "index.html"
-		}
-		if strings.Contains(name, "/.") || strings.HasPrefix(name, ".") {
-			return fiber.ErrNotFound
-		}
-		b, e := fs.ReadFile(assets, name)
-		if e != nil {
-			if path.Ext(name) != "" {
-				return fiber.ErrNotFound
-			}
-			name = "index.html"
-			b, e = fs.ReadFile(assets, name)
-			if e != nil {
-				return fiber.ErrNotFound
-			}
-		}
-		if name == "index.html" {
-			c.Set("Cache-Control", "no-cache")
-		} else if strings.HasPrefix(name, "assets/") {
-			c.Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
-		if t := mime.TypeByExtension(path.Ext(name)); t != "" {
-			c.Set("Content-Type", t)
-		}
-		return c.Send(b)
-	})
+	app.Use(func(c *fiber.Ctx) error { return fiber.ErrNotFound })
 	return app
 }

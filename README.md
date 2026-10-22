@@ -4,9 +4,10 @@ Part catalog and physical inventory management. A Part schema is identified by S
 each inventory row represents one physical item. Both catalog composition and item
 ownership support nesting.
 
-The backend uses Go, Fiber, GORM, and PostgreSQL. The management UI uses React,
-TypeScript, Vite, Mantine, and Lucide. Its pnpm production build is embedded into
-the Go binary and served on the same origin as the API.
+The backend uses Go, Fiber, GORM, and PostgreSQL and serves only the JSON API.
+The inventory browser in `webui/` is a separate Next.js (App Router) app using
+React, TypeScript, Mantine, and Tabler icons. Its server components call the API
+through `PAPI_URL`, so the browser never talks to the Go server directly.
 
 ## Run locally
 
@@ -14,23 +15,17 @@ Requirements: Go 1.26.2+, Node 22+, pnpm 11.25.0, and PostgreSQL 17+ or Docker.
 
 ```sh
 cp .env.example .env
+cp webui/.env.example webui/.env.local
 docker compose -f docker-compose.dev.yml up -d
-make build
-./bin/papi2
+make run          # API on http://localhost:8082
+make webui-dev    # UI on http://localhost:3000 (second terminal)
 ```
 
-Open <http://localhost:8082>. The server applies versioned SQL migrations at startup.
-The development database uses port 5438 to avoid the usual local PostgreSQL port.
+The server applies versioned SQL migrations at startup. The development database
+uses port 5438 to avoid the usual local PostgreSQL port. `make build` produces
+`bin/papi2`; `make webui-start` builds and serves the production UI.
 
-For hot reload, run these commands in separate terminals:
-
-```sh
-make run
-make webui-dev
-```
-
-Vite serves the UI at <http://localhost:5173> and proxies the API to port 8082.
-Run `make webui-build` followed by restarting the backend to update its embedded UI.
+The UI reads `PAPI_URL` (default `http://localhost:8082`) on the server side.
 
 ## Data rules
 
@@ -112,7 +107,7 @@ The server reads `.env` if present. Environment variables take precedence.
 make test
 make lint
 make webui-check
-cd webui && pnpm test
+make webui-test
 ```
 
 For PostgreSQL integration tests, use a test database whose user may create schemas:
@@ -122,5 +117,6 @@ TEST_DATABASE_URL=postgres://papi2:papi2@localhost:5438/papi2?sslmode=disable ma
 ```
 
 Integration suites use isolated schemas and exercise database invariants and HTTP
-workflows. CI runs them against PostgreSQL. `make docker-build` builds the production
-image with the UI included.
+workflows. CI runs them against PostgreSQL. `make docker-build` builds the API image
+(`papi2:local`) and the standalone Next.js UI image (`papi2-webui:local`); run the
+UI container with `PAPI_URL` pointing at the API.
