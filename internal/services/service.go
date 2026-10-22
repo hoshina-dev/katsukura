@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/papi2/internal/apperrors"
 	"github.com/hoshina-dev/papi2/internal/models"
+	"github.com/hoshina-dev/papi2/schema"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +86,9 @@ func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
 	if p.Metadata == nil {
 		p.Metadata = models.JSONMap{}
 	}
+	if e := validateMetadata(p.Metadata); e != nil {
+		return e
+	}
 	return s.write(ctx, func(r Store) error { return r.Create(ctx, p) })
 }
 func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error {
@@ -103,6 +107,9 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 	i.ArchivedAt = nil
 	if i.Metadata == nil {
 		i.Metadata = models.JSONMap{}
+	}
+	if e := validateMetadata(i.Metadata); e != nil {
+		return e
 	}
 	return s.write(ctx, func(r Store) error {
 		if _, e := r.GetPart(ctx, i.PartID); e != nil {
@@ -292,6 +299,9 @@ func validatePatch(p map[string]any, allowed string) error {
 			if !ok {
 				return apperrors.Invalid("metadata must be an object")
 			}
+			if e := validateMetadata(m); e != nil {
+				return e
+			}
 			p[k] = models.JSONMap(m)
 		case "required_quantity":
 			var n int64
@@ -354,6 +364,12 @@ func (s *Service) readTree(ctx context.Context, id uuid.UUID, depth int) (*model
 	}
 	v, e := s.repo.Tree(ctx, id, depth)
 	return v, apperrors.Translate(e)
+}
+func validateMetadata(m map[string]any) error {
+	if e := schema.ValidateMetadata(m); e != nil {
+		return apperrors.Invalid(e.Error())
+	}
+	return nil
 }
 func DecodeObject(body []byte, target any) error {
 	var p map[string]json.RawMessage

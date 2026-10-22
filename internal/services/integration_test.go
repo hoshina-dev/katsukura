@@ -138,7 +138,7 @@ func TestInventoryLifecycleAndConcurrentQuantity(t *testing.T) {
 	if e != nil || len(detail.Components) != 0 || len(detail.History) != 1 || detail.History[0].RemovedAt == nil {
 		t.Fatalf("history incorrect: %+v %v", detail, e)
 	}
-	if e = s.PatchItem(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"checked": true}}); e != nil {
+	if e = s.PatchItem(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"notes": "checked"}}); e != nil {
 		t.Fatal(e)
 	}
 	if e = s.PatchItem(ctx, parent.ID, map[string]any{"location": nil}); e != nil {
@@ -151,7 +151,7 @@ func TestInventoryLifecycleAndConcurrentQuantity(t *testing.T) {
 		t.Fatal(e)
 	}
 	detail, e = s.Item(ctx, parent.ID)
-	if e != nil || detail.ArchivedAt != nil || detail.Location != nil || detail.Metadata["checked"] != true {
+	if e != nil || detail.ArchivedAt != nil || detail.Location != nil || detail.Metadata["notes"] != "checked" {
 		t.Fatalf("patch/restore incorrect: %+v %v", detail, e)
 	}
 	if e = s.DeleteComponent(ctx, parentPart.ID, slot.ID); e == nil {
@@ -241,7 +241,7 @@ func TestInventoryLifecycleAndConcurrentQuantity(t *testing.T) {
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
-	}{{"GET", "/api/v1/parts?limit=1&offset=1", "", 200}, {"GET", "/api/v1/inventory/" + parent.ID.String(), "", 200}, {"PATCH", "/api/v1/inventory/" + parent.ID.String(), `{"location":" HTTP shelf ","metadata":{"large":9007199254740993}}`, 200}, {"POST", "/api/v1/inventory", `{"part_id":"` + uuid.New().String() + `"}`, 404}} {
+	}{{"GET", "/api/v1/parts?limit=1&offset=1", "", 200}, {"GET", "/api/v1/inventory/" + parent.ID.String(), "", 200}, {"PATCH", "/api/v1/inventory/" + parent.ID.String(), `{"location":" HTTP shelf ","metadata":{"temperature_stage":9007199254740993}}`, 200}, {"POST", "/api/v1/inventory", `{"part_id":"` + uuid.New().String() + `"}`, 404}} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
 		res, e := app.Test(req, 10000)

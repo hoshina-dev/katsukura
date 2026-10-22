@@ -9,7 +9,7 @@ import (
 )
 
 func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
-	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": map[string]any{"x": false}, "archived_at": nil}
+	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": map[string]any{"notes": nil}, "archived_at": nil}
 	if e := validatePatch(p, "serial_number location metadata archived_at"); e != nil {
 		t.Fatal(e)
 	}
@@ -28,7 +28,7 @@ func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
 	}
 }
 func TestInvalidPatch(t *testing.T) {
-	for _, p := range []map[string]any{{"metadata": nil}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"assembly_state": "bad"}, {"name": "  "}} {
+	for _, p := range []map[string]any{{"metadata": nil}, {"metadata": map[string]any{"image_url": "x"}}, {"metadata": map[string]any{"category": "x"}}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"assembly_state": "bad"}, {"name": "  "}} {
 		if e := validatePatch(p, "metadata archived_at required_quantity assembly_state name"); e == nil {
 			t.Fatalf("accepted invalid patch %v", p)
 		}
@@ -44,14 +44,14 @@ func TestDecodeObject(t *testing.T) {
 }
 func TestDecodeMetadataPreservesLargeInteger(t *testing.T) {
 	var m map[string]any
-	if e := DecodeObject([]byte(`{"metadata":{"large":9007199254740993}}`), &m); e != nil {
+	if e := DecodeObject([]byte(`{"metadata":{"temperature_stage":9007199254740993}}`), &m); e != nil {
 		t.Fatal(e)
 	}
 	if e := validatePatch(m, "metadata"); e != nil {
 		t.Fatal(e)
 	}
 	value, e := m["metadata"].(models.JSONMap).Value()
-	if e != nil || value != `{"large":9007199254740993}` {
+	if e != nil || value != `{"temperature_stage":9007199254740993}` {
 		t.Fatalf("large number changed: %v %v", value, e)
 	}
 }

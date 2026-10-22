@@ -170,7 +170,7 @@ func TestHTTPReferencedBOMAndNullablePatch(t *testing.T) {
 		t.Fatal("draft transition did not persist")
 	}
 	request(t, app, "PATCH", parentPath, object("assembly_state", "complete"), 200)
-	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", object("kept", true)), 200)) != parent {
+	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", object("notes", "kept")), 200)) != parent {
 		t.Fatal("item PATCH did not return updated entity")
 	}
 	detail := request(t, app, "GET", parentPath, nil, 200)
@@ -180,7 +180,7 @@ func TestHTTPReferencedBOMAndNullablePatch(t *testing.T) {
 	if len(detail["history"].([]any)) != 2 || len(detail["components"].([]any)) != 0 {
 		t.Fatalf("history/active separation: %+v", detail)
 	}
-	if detail["assembly_state"] != "complete" || detail["metadata"].(map[string]any)["kept"] != true {
+	if detail["assembly_state"] != "complete" || detail["metadata"].(map[string]any)["notes"] != "kept" {
 		t.Fatalf("complete item with missing required children or metadata changed: %+v", detail)
 	}
 	for _, entry := range detail["history"].([]any) {
@@ -191,6 +191,7 @@ func TestHTTPReferencedBOMAndNullablePatch(t *testing.T) {
 	}
 	expectError(t, request(t, app, "PATCH", "/api/v1/parts/"+childPart, object("sku", "RENAMED"), 409), "constraint_violation", "SKU cannot change")
 	request(t, app, "PATCH", parentPath, object("metadata", nil), 400)
+	expectError(t, request(t, app, "PATCH", parentPath, object("metadata", object("image_url", "x")), 400), "invalid_request", "image_url")
 	if id(t, request(t, app, "PATCH", "/api/v1/parts/"+parentPart, object("description", nil), 200)) != parentPart {
 		t.Fatal("part PATCH did not return updated entity")
 	}

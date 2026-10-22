@@ -67,6 +67,37 @@ Part requires archiving its items and removing references from active parent BOM
 Restore through the UI or PATCH with `{"archived_at": null}`. Archived records retain
 history. Tree queries limit response depth without limiting stored nesting.
 
+## Metadata schema
+
+`metadata` on parts and inventory items is validated against one shared JSON Schema,
+[`schema/metadata.schema.json`](schema/metadata.schema.json) (draft 2020-12), which is
+embedded in the binary and checked on every create and PATCH. Unknown keys are rejected.
+
+| Field | Type |
+|---|---|
+| `category` | list of strings or null |
+| `manufacturer` | string or null |
+| `country_of_origin` | string or null |
+| `notes` | string or null |
+| `temperature_stage` | number or null |
+| `image_urls` | list of strings or null; shown as a carousel in the UI |
+
+All fields are optional and nullable; a null, missing, or empty value is simply not
+shown. To make a field nullable add `"null"` to its `type`; to make
+it mandatory add it to `required`. Keep `webui/src/libs/inventory.ts` (`Metadata`) in
+sync. The database only checks that metadata is an object, so direct SQL writes must
+follow the schema themselves.
+
+Mock data lives in `sql_mock/` and is applied by hand, in order:
+
+```sh
+psql "$DATA_SOURCE_NAME" -f sql_mock/900_schematics_inventory.sql
+psql "$DATA_SOURCE_NAME" -f sql_mock/901_metadata_schema.sql
+```
+
+`901` converts older mock metadata (`image_url`, free-form keys) to the schema and can be
+re-run safely.
+
 ## API
 
 All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
@@ -87,7 +118,8 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
 `part_id`. PATCH distinguishes omitted fields from explicit null. Null clears nullable
-fields; metadata must be an object. Liveness is `/healthz`; database readiness is `/readyz`.
+fields; metadata must be an object that matches the metadata schema. Liveness is
+`/healthz`; database readiness is `/readyz`.
 
 ## Configuration
 
