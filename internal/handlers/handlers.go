@@ -183,6 +183,19 @@ func (h *Handler) Item(c *fiber.Ctx) error {
 	}
 	return c.JSON(v)
 }
+func (h *Handler) ValidateMetadata(c *fiber.Ctx) error {
+	if e := requireJSON(c); e != nil {
+		return e
+	}
+	var m map[string]any
+	if e := services.DecodeObject(c.Body(), &m); e != nil {
+		return e
+	}
+	if e := services.ValidateMetadata(m); e != nil {
+		return e
+	}
+	return c.JSON(m)
+}
 func (h *Handler) CreatePart(c *fiber.Ctx) error {
 	v := new(models.Part)
 	if e := body(c, v, "sku name description metadata"); e != nil {

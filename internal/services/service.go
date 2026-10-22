@@ -86,7 +86,7 @@ func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
 	if p.Metadata == nil {
 		p.Metadata = models.JSONMap{}
 	}
-	if e := validateMetadata(p.Metadata); e != nil {
+	if e := ValidateMetadata(p.Metadata); e != nil {
 		return e
 	}
 	return s.write(ctx, func(r Store) error { return r.Create(ctx, p) })
@@ -108,7 +108,7 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 	if i.Metadata == nil {
 		i.Metadata = models.JSONMap{}
 	}
-	if e := validateMetadata(i.Metadata); e != nil {
+	if e := ValidateMetadata(i.Metadata); e != nil {
 		return e
 	}
 	return s.write(ctx, func(r Store) error {
@@ -299,7 +299,7 @@ func validatePatch(p map[string]any, allowed string) error {
 			if !ok {
 				return apperrors.Invalid("metadata must be an object")
 			}
-			if e := validateMetadata(m); e != nil {
+			if e := ValidateMetadata(m); e != nil {
 				return e
 			}
 			p[k] = models.JSONMap(m)
@@ -365,7 +365,9 @@ func (s *Service) readTree(ctx context.Context, id uuid.UUID, depth int) (*model
 	v, e := s.repo.Tree(ctx, id, depth)
 	return v, apperrors.Translate(e)
 }
-func validateMetadata(m map[string]any) error {
+
+// ValidateMetadata checks metadata against schema/metadata.schema.json.
+func ValidateMetadata(m map[string]any) error {
 	if e := schema.ValidateMetadata(m); e != nil {
 		return apperrors.Invalid(e.Error())
 	}

@@ -22,6 +22,7 @@ func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
 	})
 	v := app.Group("/api/v1")
 	v.Get("/summary", h.Summary)
+	v.Post("/metadata/validate", h.ValidateMetadata)
 	p := v.Group("/parts")
 	p.Get("/", h.ListParts)
 	p.Post("/", h.CreatePart)

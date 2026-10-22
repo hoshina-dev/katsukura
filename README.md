@@ -115,6 +115,7 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/inventory/:id/components/:installationID` | Remove an installed child |
 | `/inventory/:id/tree` | Read a nested tree with bounded depth |
 | `/summary` | Active SKU/item and ownership counts |
+| `/metadata/validate` | POST metadata; returns it if it matches the schema, else 400 |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
 `part_id`. PATCH distinguishes omitted fields from explicit null. Null clears nullable
