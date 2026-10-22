@@ -9,7 +9,13 @@ import {
   VisuallyHidden,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconLayoutGrid, IconList, IconSearch } from "@tabler/icons-react";
+import {
+  IconLayoutGrid,
+  IconList,
+  IconPlus,
+  IconSearch,
+} from "@tabler/icons-react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -37,7 +43,7 @@ function useCatalogParams() {
   return { params, update };
 }
 
-export function CatalogToolbar() {
+export function CatalogToolbar({ addHref }: { addHref?: string }) {
   const { params, update } = useCatalogParams();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [debounced] = useDebouncedValue(search, 300);
@@ -105,6 +111,15 @@ export function CatalogToolbar() {
           },
         ]}
       />
+      {addHref && (
+        <Button
+          component={Link}
+          href={addHref}
+          leftSection={<IconPlus size={16} />}
+        >
+          Add
+        </Button>
+      )}
     </Group>
   );
 }

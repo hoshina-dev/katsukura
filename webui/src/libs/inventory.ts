@@ -1,11 +1,54 @@
 // Shared PAPI REST types and helpers (safe to import from client components)
 
+// Mirrors schema/metadata.schema.json; the API rejects any other keys
+export type Metadata = {
+  category?: string[] | null;
+  manufacturer?: string | null;
+  country_of_origin?: string | null;
+  notes?: string | null;
+  temperature_stage?: number | null;
+  image_urls?: string[] | null;
+};
+
+export const METADATA_KEYS: (keyof Metadata)[] = [
+  "category",
+  "manufacturer",
+  "country_of_origin",
+  "notes",
+  "temperature_stage",
+  "image_urls",
+];
+
+// Splits the API's schema error, e.g. "invalid metadata: /category: got
+// string, want array; additional properties 'x' not allowed", into a short
+// message per metadata key. Returns null for any other error.
+export function metadataErrors(message: string) {
+  const prefix = "invalid metadata: ";
+  if (!message.startsWith(prefix)) return null;
+  const errors: Record<string, string> = {};
+  for (const part of message.slice(prefix.length).split("; ")) {
+    const extra = part.match(/^additional properties (.+) not allowed$/);
+    const field = part.match(/^\/([^/:]+)(?:\/([^:]+))?: (.+)$/);
+    if (extra) {
+      for (const [, key] of extra[1].matchAll(/'([^']*)'/g)) {
+        errors[key] = "not in schema";
+      }
+    } else if (field) {
+      const [, key, index, reason] = field;
+      errors[key] = index ? `item ${index}: ${reason}` : reason;
+    } else {
+      errors[""] = part;
+    }
+  }
+  return errors;
+}
+
 export type Part = {
   id: string;
   sku: string;
   name: string;
   description: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Metadata;
   archived_at: string | null;
 };
 
@@ -27,7 +70,7 @@ export type Item = {
   serial_number: string | null;
   assembly_state: "draft" | "complete";
   location: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Metadata;
   archived_at: string | null;
   part?: Part;
 };
@@ -116,9 +159,10 @@ export function parseCatalogView(params: SearchParams): CatalogView {
   return param(params, "view") === "table" ? "table" : "grid";
 }
 
-export function imageUrl(metadata: Record<string, unknown>) {
-  const url = metadata.image_url;
-  return typeof url === "string" && url ? url : null;
+export function imageUrls(metadata: Metadata) {
+  return (metadata.image_urls ?? []).filter(
+    (url) => typeof url === "string" && url,
+  );
 }
 
 export function skuHref(sku: string) {

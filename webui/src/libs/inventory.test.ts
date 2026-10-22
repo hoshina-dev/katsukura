@@ -1,5 +1,6 @@
 import {
-  imageUrl,
+  imageUrls,
+  metadataErrors,
   itemHref,
   parseCatalogQuery,
   parseCatalogView,
@@ -19,8 +20,34 @@ describe("parseCatalogQuery", () => {
 
   it("reads the first value of repeated params", () => {
     expect(
-      parseCatalogQuery({ q: ["  bolt ", "nut"], type: "parts", stock: "in", page: "3" }),
+      parseCatalogQuery({
+        q: ["  bolt ", "nut"],
+        type: "parts",
+        stock: "in",
+        page: "3",
+      }),
     ).toEqual({ search: "bolt", type: "parts", stock: "in", page: 3 });
+  });
+});
+
+describe("metadataErrors", () => {
+  it("maps schema errors to keys", () => {
+    expect(
+      metadataErrors(
+        "invalid metadata: /category/0: got number, want string; " +
+          "/notes: got number, want null or string; " +
+          "additional properties 'a', 'b' not allowed",
+      ),
+    ).toEqual({
+      category: "item 0: got number, want string",
+      notes: "got number, want null or string",
+      a: "not in schema",
+      b: "not in schema",
+    });
+  });
+
+  it("ignores other errors", () => {
+    expect(metadataErrors("SKU already exists")).toBeNull();
   });
 });
 
@@ -30,10 +57,12 @@ describe("helpers", () => {
     expect(parseCatalogView({})).toBe("grid");
   });
 
-  it("only accepts non-empty string image urls", () => {
-    expect(imageUrl({ image_url: "https://x/y.png" })).toBe("https://x/y.png");
-    expect(imageUrl({ image_url: "" })).toBeNull();
-    expect(imageUrl({ image_url: 1 })).toBeNull();
+  it("keeps non-empty image urls in order", () => {
+    expect(
+      imageUrls({ image_urls: ["https://x/a.png", "", "https://x/b.png"] }),
+    ).toEqual(["https://x/a.png", "https://x/b.png"]);
+    expect(imageUrls({})).toEqual([]);
+    expect(imageUrls({ image_urls: null })).toEqual([]);
   });
 
   it("encodes SKUs in links", () => {

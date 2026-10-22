@@ -1,5 +1,4 @@
 import {
-  Anchor,
   Box,
   Breadcrumbs,
   SimpleGrid,
@@ -15,34 +14,21 @@ import {
 } from "@mantine/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
 
+import {
+  Field,
+  MetadataSection,
+} from "@/components/inventory-browser/Metadata";
+import { PartGallery } from "@/components/inventory-browser/PartGallery";
 import { EmptyNote, Section } from "@/components/inventory-browser/Section";
 import { InstalledTree } from "@/components/inventory-browser/Trees";
-import { assemblyLabel, itemHref, skuHref } from "@/libs/inventory";
+import { assemblyLabel, imageUrls, itemHref, skuHref } from "@/libs/inventory";
 import { getItem, getItemTree, getPart, isMissing } from "@/libs/papiRest";
 
 const linkStyle = {
   textDecoration: "none",
   color: "var(--mantine-color-anchor)",
 };
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
-        {label}
-      </Text>
-      <Text size="sm" component="div">
-        {children}
-      </Text>
-    </div>
-  );
-}
-
-function formatValue(value: unknown) {
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
 
 export default async function ItemPage({
   params,
@@ -64,7 +50,7 @@ export default async function ItemPage({
       (row) => row.part_component_id === componentId && !row.removed_at,
     ).length;
   const parentItem = item.parent?.parent_item;
-  const metadata = Object.entries(item.metadata);
+  const images = imageUrls(item.metadata);
 
   return (
     <Stack gap="xl">
@@ -93,6 +79,19 @@ export default async function ItemPage({
         </Text>
       </div>
 
+      {images.length > 0 && (
+        <Box
+          maw={560}
+          style={{
+            borderRadius: "var(--mantine-radius-md)",
+            overflow: "hidden",
+            border: "1px solid var(--mantine-color-gray-3)",
+          }}
+        >
+          <PartGallery images={images} alt={part.name} />
+        </Box>
+      )}
+
       <Section title="Item details">
         <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="lg">
           <Field label="Serial number">
@@ -117,39 +116,9 @@ export default async function ItemPage({
             )}
           </Field>
         </SimpleGrid>
-        {metadata.length > 0 && (
-          <Box style={{ overflowX: "auto" }}>
-            <Table verticalSpacing={6}>
-              <TableTbody>
-                {metadata.map(([key, value]) => (
-                  <TableTr key={key}>
-                    <TableTd w={200}>
-                      <Text size="sm" c="dimmed">
-                        {key}
-                      </Text>
-                    </TableTd>
-                    <TableTd style={{ wordBreak: "break-all" }}>
-                      {typeof value === "string" &&
-                      /^https?:\/\//.test(value) ? (
-                        <Anchor
-                          href={value}
-                          target="_blank"
-                          rel="noreferrer"
-                          size="sm"
-                        >
-                          {value}
-                        </Anchor>
-                      ) : (
-                        <Text size="sm">{formatValue(value)}</Text>
-                      )}
-                    </TableTd>
-                  </TableTr>
-                ))}
-              </TableTbody>
-            </Table>
-          </Box>
-        )}
       </Section>
+
+      <MetadataSection metadata={item.metadata} />
 
       <Section
         title="Installed components"

@@ -15,7 +15,8 @@ import {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { PartImage } from "@/components/inventory-browser/PartImage";
+import { MetadataSection } from "@/components/inventory-browser/Metadata";
+import { PartGallery } from "@/components/inventory-browser/PartGallery";
 import { EmptyNote, Section } from "@/components/inventory-browser/Section";
 import {
   StockStatus,
@@ -24,7 +25,7 @@ import {
 import { BomTree } from "@/components/inventory-browser/Trees";
 import {
   assemblyLabel,
-  imageUrl,
+  imageUrls,
   itemHref,
   unitsLabel,
 } from "@/libs/inventory";
@@ -45,6 +46,7 @@ export default async function SkuPage({
   if (!part) notFound();
 
   const isProduct = part.components.length > 0;
+  const images = imageUrls(part.metadata);
   const [items, bom] = await Promise.all([
     listItems(part.id),
     isProduct ? getBomTree(part) : Promise.resolve([]),
@@ -58,16 +60,21 @@ export default async function SkuPage({
         </Text>
       </Link>
 
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl">
-        <Box
-          style={{
-            borderRadius: "var(--mantine-radius-md)",
-            overflow: "hidden",
-            border: "1px solid var(--mantine-color-gray-3)",
-          }}
-        >
-          <PartImage src={imageUrl(part.metadata)} alt={part.name} />
-        </Box>
+      <SimpleGrid
+        cols={{ base: 1, sm: images.length > 0 ? 2 : 1 }}
+        spacing="xl"
+      >
+        {images.length > 0 && (
+          <Box
+            style={{
+              borderRadius: "var(--mantine-radius-md)",
+              overflow: "hidden",
+              border: "1px solid var(--mantine-color-gray-3)",
+            }}
+          >
+            <PartGallery images={images} alt={part.name} />
+          </Box>
+        )}
         <Stack gap="sm">
           <Group gap="xs">
             <TypeLabel isProduct={isProduct} />
@@ -88,6 +95,8 @@ export default async function SkuPage({
         </Stack>
       </SimpleGrid>
 
+      <MetadataSection metadata={part.metadata} />
+
       <Section
         title="Inventory instances"
         description={
@@ -106,7 +115,6 @@ export default async function SkuPage({
                   <TableTh>Serial number</TableTh>
                   <TableTh>Assembly state</TableTh>
                   <TableTh>Location</TableTh>
-                  <TableTh>Status</TableTh>
                   <TableTh />
                 </TableTr>
               </TableThead>
@@ -122,11 +130,6 @@ export default async function SkuPage({
                     </TableTd>
                     <TableTd>{assemblyLabel(item.assembly_state)}</TableTd>
                     <TableTd>{item.location ?? "—"}</TableTd>
-                    <TableTd>
-                      {typeof item.metadata.status === "string"
-                        ? item.metadata.status
-                        : "Active"}
-                    </TableTd>
                     <TableTd ta="right">
                       <Link
                         href={itemHref(part.sku, item.id)}

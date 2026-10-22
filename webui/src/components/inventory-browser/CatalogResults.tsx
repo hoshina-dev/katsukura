@@ -6,20 +6,24 @@ import {
   Skeleton,
   Stack,
   Text,
+  Title,
 } from "@mantine/core";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import {
   CATALOG_PAGE_SIZE,
   type CatalogEntry,
   type CatalogQuery,
   type CatalogView,
+  parseCatalogQuery,
+  parseCatalogView,
   skuHref,
   unitsLabel,
 } from "@/libs/inventory";
 import { getCatalog } from "@/libs/papiRest";
 
-import { CatalogPager } from "./CatalogControls";
+import { CatalogPager, CatalogToolbar } from "./CatalogControls";
 import { CatalogTable } from "./CatalogTable";
 import { PartImage } from "./PartImage";
 import { StockStatus, TypeLabel } from "./StockStatus";
@@ -129,5 +133,33 @@ export function CatalogSkeleton({ view }: { view: CatalogView }) {
         </Card>
       ))}
     </SimpleGrid>
+  );
+}
+
+interface CatalogProps {
+  title: string;
+  description: string;
+  params: Record<string, string | string[] | undefined>;
+  addHref?: string;
+}
+
+export function Catalog({ title, description, params, addHref }: CatalogProps) {
+  const query = parseCatalogQuery(params);
+  const view = parseCatalogView(params);
+
+  return (
+    <Stack gap="lg">
+      <div>
+        <Title order={1}>{title}</Title>
+        <Text c="dimmed">{description}</Text>
+      </div>
+      <CatalogToolbar addHref={addHref} />
+      <Suspense
+        key={JSON.stringify([query, view])}
+        fallback={<CatalogSkeleton view={view} />}
+      >
+        <CatalogResults query={query} view={view} />
+      </Suspense>
+    </Stack>
   );
 }

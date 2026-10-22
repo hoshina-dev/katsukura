@@ -7,10 +7,11 @@ import {
   CATALOG_PAGE_SIZE,
   type CatalogEntry,
   type CatalogQuery,
-  imageUrl,
+  imageUrls,
   type Item,
   type ItemDetail,
   type List,
+  type Metadata,
   type Part,
   type PartDetail,
   type TreeNode,
@@ -39,11 +40,8 @@ export function isMissing(error: unknown) {
   );
 }
 
-async function get<T>(path: string, ttl?: number): Promise<T> {
-  const response = await fetch(
-    API_URL + path,
-    ttl ? { next: { revalidate: ttl } } : { cache: "no-store" },
-  );
+async function request<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await fetch(API_URL + path, init);
   const body = await response.json().catch(() => undefined);
   if (!response.ok) {
     throw new PapiError(
@@ -54,12 +52,39 @@ async function get<T>(path: string, ttl?: number): Promise<T> {
   return body as T;
 }
 
+function get<T>(path: string, ttl?: number) {
+  return request<T>(
+    path,
+    ttl ? { next: { revalidate: ttl } } : { cache: "no-store" },
+  );
+}
+
 function qs(params: Record<string, string | number | undefined>) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") search.set(key, String(value));
   }
   return search.toString();
+}
+
+export type NewPart = Pick<Part, "sku" | "name" | "description" | "metadata">;
+
+export function createPart(part: NewPart) {
+  return request<Part>("/parts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(part),
+    cache: "no-store",
+  });
+}
+
+export function validateMetadata(metadata: Record<string, unknown>) {
+  return request<Metadata>("/metadata/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(metadata),
+    cache: "no-store",
+  });
 }
 
 export function getPart(id: string) {
@@ -107,7 +132,7 @@ async function toEntry(part: Part): Promise<CatalogEntry> {
     id: part.id,
     sku: part.sku,
     name: part.name,
-    imageUrl: imageUrl(part.metadata),
+    imageUrl: imageUrls(part.metadata)[0] ?? null,
     isProduct: detail.components.length > 0,
     stockCount: stock,
   };
