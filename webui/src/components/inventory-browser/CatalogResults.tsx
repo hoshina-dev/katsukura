@@ -1,4 +1,5 @@
 import {
+  Box,
   Card,
   CardSection,
   Group,
@@ -26,6 +27,7 @@ import {
 import { getCatalog } from "@/libs/papiRest";
 
 import { CatalogToolbar } from "./CatalogControls";
+import { DeletePartButton } from "./DeletePartButton";
 import { Pager } from "./Pager";
 import { CatalogTable } from "./CatalogTable";
 import { PartImage } from "./PartImage";
@@ -46,10 +48,21 @@ function CatalogCard({ entry, base }: { entry: CatalogEntry; base: string }) {
         padding="md"
         h="100%"
         className="catalog-card"
+        pos="relative"
       >
         <CardSection>
           <PartImage src={entry.imageUrl} alt={entry.name} />
         </CardSection>
+        {base === "/backoffice" && (
+          <Box pos="absolute" top={8} right={8}>
+            <DeletePartButton
+              partId={entry.id}
+              name={entry.name}
+              itemCount={entry.stockCount}
+              isProduct={entry.isProduct}
+            />
+          </Box>
+        )}
         <Stack gap={4} mt="md">
           <Group justify="space-between" wrap="nowrap" gap="xs">
             <Text fw={600} truncate>

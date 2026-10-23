@@ -23,6 +23,7 @@ import {
   skuHref,
 } from "@/libs/inventory";
 
+import { DeletePartButton } from "./DeletePartButton";
 import { PartImage } from "./PartImage";
 import { StockStatus, TypeLabel } from "./StockStatus";
 
@@ -47,7 +48,9 @@ export function CatalogTable({
   const [stopped, setStopped] = useState<string | null>(null);
   const loaded = useRef(1);
   const { ref, entry } = useIntersection({ threshold: 0 });
-  const hasMore = entries.length < total && !stopped;
+  const [deleted, setDeleted] = useState(0);
+  const editable = base === "/backoffice";
+  const hasMore = entries.length + deleted < total && !stopped;
 
   useEffect(() => {
     if (!entry?.isIntersecting || !hasMore || loading) return;
@@ -95,6 +98,7 @@ export function CatalogTable({
             <TableTh>SKU</TableTh>
             <TableTh>Type</TableTh>
             <TableTh>Stock</TableTh>
+            {editable && <TableTh w={56} />}
           </TableTr>
         </TableThead>
         <TableTbody>
@@ -143,6 +147,22 @@ export function CatalogTable({
                     <StockStatus count={entry.stockCount} />
                   </Group>
                 </TableTd>
+                {editable && (
+                  <TableTd>
+                    <DeletePartButton
+                      partId={entry.id}
+                      name={entry.name}
+                      itemCount={entry.stockCount}
+                      isProduct={entry.isProduct}
+                      onDeleted={() => {
+                        setEntries((rows) =>
+                          rows.filter((row) => row.id !== entry.id),
+                        );
+                        setDeleted((n) => n + 1);
+                      }}
+                    />
+                  </TableTd>
+                )}
               </TableTr>
             );
           })}
@@ -153,7 +173,7 @@ export function CatalogTable({
           <Loader size="xs" />
         ) : (
           <Text size="xs" c="dimmed">
-            {stopped ?? `${entries.length} of ${total}`}
+            {stopped ?? `${entries.length} of ${total - deleted}`}
           </Text>
         )}
       </Group>

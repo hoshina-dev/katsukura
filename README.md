@@ -70,8 +70,10 @@ clean — use it after restoring a dump. Database dumps containing installation
 history must be restored by an authorized database owner with triggers disabled
 during restoration.
 
-Archiving an installed item requires deleting its parent first. Archiving a
-Part requires archiving its items and removing references from active parent BOMs.
+Archiving an installed item requires deleting its parent first. Archiving a part
+archives all its items too (composites return their components to stock); it is
+rejected while any of those items is installed elsewhere or the part is in another
+active BOM.
 Restore through the UI or PATCH with `{"archived_at": null}`. Archived records retain
 history. Tree queries limit response depth without limiting stored nesting.
 

@@ -209,7 +209,7 @@ func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	for _, i := range append(children, others...) {
 		request(t, app, "DELETE", "/api/v1/inventory/"+itemID(i), nil, 204)
 	}
-	expectError(t, request(t, app, "DELETE", "/api/v1/parts/"+childPart, nil, 409), "constraint_violation", "active BOM")
+	expectError(t, request(t, app, "DELETE", "/api/v1/parts/"+childPart, nil, 409), "conflict", "is used in the BOM of ASSEMBLY")
 	request(t, app, "DELETE", "/api/v1/parts/"+parentPart, nil, 204)
 	request(t, app, "DELETE", "/api/v1/parts/"+childPart, nil, 204)
 	expectError(t, request(t, app, "PATCH", "/api/v1/parts/"+parentPart, object("archived_at", nil), 409), "constraint_violation", "active BOM")

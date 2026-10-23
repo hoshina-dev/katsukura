@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { type Metadata, skuHref } from "@/libs/inventory";
 import {
   archiveItem,
+  archivePart,
   createComponent,
   createItems,
   createPart,
@@ -87,6 +88,17 @@ export async function addPart(part: NewPart): Promise<SubmitResult> {
     return toResult(error);
   }
   redirect(skuHref(sku, "/backoffice"));
+}
+
+export async function deletePart(partId: string): Promise<SubmitResult> {
+  try {
+    await archivePart(partId);
+  } catch (error) {
+    return toResult(error);
+  }
+  updateTag(partTag(partId));
+  updateTag(ITEMS_TAG);
+  return {};
 }
 
 export async function savePart(

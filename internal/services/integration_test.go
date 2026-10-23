@@ -121,13 +121,15 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	}
 
 	// The BOM is fixed while items exist
-	if e = s.PatchComponent(ctx, parentPart.ID, slot.ID, map[string]any{"required_quantity": float64(3)}); status(e) != 409 {
+	if e = patchComponent(s.UpdateComponent)(ctx, parentPart.ID, slot.ID, map[string]any{"required_quantity": float64(3)}); status(e) != 409 {
 		t.Fatalf("BOM edit with items: %v", e)
 	}
 	if e = s.CreateComponent(ctx, parentPart.ID, &models.PartComponent{ChildPartID: wrongPart.ID, Slot: "extra", RequiredQuantity: 1}); status(e) != 409 {
 		t.Fatalf("BOM add with items: %v", e)
 	}
-	for _, op := range []func() error{func() error { return s.PatchComponent(ctx, wrongPart.ID, slot.ID, map[string]any{"slot": "x"}) }, func() error { return s.DeleteComponent(ctx, wrongPart.ID, slot.ID) }} {
+	for _, op := range []func() error{func() error {
+		return patchComponent(s.UpdateComponent)(ctx, wrongPart.ID, slot.ID, map[string]any{"slot": "x"})
+	}, func() error { return s.DeleteComponent(ctx, wrongPart.ID, slot.ID) }} {
 		if e = op(); status(e) != 404 {
 			t.Fatalf("wrong-parent component mutation: %v", e)
 		}
@@ -172,8 +174,8 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	if e = s.ArchiveItem(ctx, spare.ID); status(e) != 409 {
 		t.Fatalf("installed item archived: %v", e)
 	}
-	must(s.PatchItem(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"notes": "checked"}}))
-	must(s.PatchItem(ctx, parent.ID, map[string]any{"location": nil}))
+	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"notes": "checked"}}))
+	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": nil}))
 	detail, e = s.Item(ctx, parent.ID)
 	if e != nil || detail.Location != nil || detail.Metadata["notes"] != "checked" {
 		t.Fatalf("patch incorrect: %+v %v", detail, e)
@@ -184,15 +186,15 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	if free, _ := s.Items(ctx, models.Filter{PartID: &childPart.ID, Available: true, Limit: 10}); free.Total != 3 {
 		t.Fatalf("components not released: %d", free.Total)
 	}
-	if e = s.PatchItem(ctx, parent.ID, map[string]any{"archived_at": nil}); status(e) != 409 {
+	if e = patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"archived_at": nil}); status(e) != 409 {
 		t.Fatalf("deleted composite restored: %v", e)
 	}
 	must(s.ArchiveItem(ctx, wrong.ID))
-	must(s.PatchItem(ctx, wrong.ID, map[string]any{"archived_at": nil}))
+	must(patch(s.UpdateItem)(ctx, wrong.ID, map[string]any{"archived_at": nil}))
 	if e = s.DeleteComponent(ctx, parentPart.ID, slot.ID); e == nil {
 		t.Fatal("BOM row with installation history deleted")
 	}
-	if e = s.PatchPart(ctx, parentPart.ID, map[string]any{"sku": "renamed"}); e == nil {
+	if e = patch(s.UpdatePart)(ctx, parentPart.ID, map[string]any{"sku": "renamed"}); e == nil {
 		t.Fatal("in-use SKU edit accepted")
 	}
 	if e = s.ArchivePart(ctx, childPart.ID); e == nil {
@@ -210,11 +212,11 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	}
 	must(s.ArchivePart(ctx, archiveParent.ID))
 	must(s.ArchivePart(ctx, archiveChild.ID))
-	if e = s.PatchPart(ctx, archiveParent.ID, map[string]any{"archived_at": nil}); e == nil {
+	if e = patch(s.UpdatePart)(ctx, archiveParent.ID, map[string]any{"archived_at": nil}); e == nil {
 		t.Fatal("restored parent with archived BOM child")
 	}
-	must(s.PatchPart(ctx, archiveChild.ID, map[string]any{"archived_at": nil}))
-	must(s.PatchPart(ctx, archiveParent.ID, map[string]any{"archived_at": nil}))
+	must(patch(s.UpdatePart)(ctx, archiveChild.ID, map[string]any{"archived_at": nil}))
+	must(patch(s.UpdatePart)(ctx, archiveParent.ID, map[string]any{"archived_at": nil}))
 	for _, sku := range []string{"literal%sku", "literal_sku"} {
 		must(s.CreatePart(ctx, &models.Part{SKU: sku, Name: "Literal"}))
 	}
@@ -488,5 +490,89 @@ func TestPartSortOrders(t *testing.T) {
 		if got := strings.Join(names, " "); got != want {
 			t.Errorf("sort %q: got %q, want %q", sort, got, want)
 		}
+	}
+}
+
+// patch drops the updated row so error-only call sites stay short
+func patch[T any](update func(context.Context, uuid.UUID, map[string]any) (T, error)) func(context.Context, uuid.UUID, map[string]any) error {
+	return func(ctx context.Context, id uuid.UUID, p map[string]any) error {
+		_, e := update(ctx, id, p)
+		return e
+	}
+}
+func patchComponent(update func(context.Context, uuid.UUID, uuid.UUID, map[string]any) (*models.PartComponent, error)) func(context.Context, uuid.UUID, uuid.UUID, map[string]any) error {
+	return func(ctx context.Context, parent, id uuid.UUID, p map[string]any) error {
+		_, e := update(ctx, parent, id, p)
+		return e
+	}
+}
+
+func TestArchivePartTakesItsItems(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	admin, e := database.Connect(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	adminPool, _ := admin.DB()
+	defer adminPool.Close()
+	schema := "archive_" + uuid.New().String()[:8]
+	if e = admin.Exec("CREATE SCHEMA " + schema).Error; e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
+	u, e := url.Parse(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+	db, e := database.Connect(u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	pool, _ := db.DB()
+	defer pool.Close()
+	if e = database.Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	s := services.New(repositories.New(db))
+	must := func(e error) {
+		t.Helper()
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	count := func(p *models.Part, available bool) int64 {
+		t.Helper()
+		page, e := s.Items(ctx, models.Filter{PartID: &p.ID, Available: available, Limit: 1})
+		must(e)
+		return page.Total
+	}
+	box, leg := &models.Part{Name: "Box"}, &models.Part{Name: "Leg"}
+	must(s.CreatePart(ctx, box))
+	must(s.CreatePart(ctx, leg))
+	must(s.CreateComponent(ctx, box.ID, &models.PartComponent{ChildPartID: leg.ID, Slot: "leg", RequiredQuantity: 2}))
+	_, e = s.CreateItems(ctx, leg.ID, 5)
+	must(e)
+	_, e = s.CreateItems(ctx, box.ID, 2)
+	must(e)
+
+	// Leg units sit inside boxes and Leg is in Box's BOM: nothing changes
+	if e = s.ArchivePart(ctx, leg.ID); e == nil || e.Error() != "Leg is used in the BOM of Box; remove it there first" {
+		t.Fatalf("part with installed items: %v", e)
+	}
+	if count(leg, false) != 5 || count(box, false) != 2 {
+		t.Fatal("rejected delete archived items")
+	}
+
+	// Deleting Box takes its items and returns their legs to stock
+	must(s.ArchivePart(ctx, box.ID))
+	if count(box, false) != 0 || count(leg, true) != 5 {
+		t.Fatalf("boxes %d, free legs %d", count(box, false), count(leg, true))
 	}
 }

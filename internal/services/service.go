@@ -166,8 +166,8 @@ func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int) 
 }
 
 // build creates items of a part and fills every BOM slot from available
-// stock, so a composite item is complete from the start. It fails before
-// writing anything when stock is short.
+// stock, so a composite item is complete from the start. It writes nothing
+// when stock is short.
 func build(ctx context.Context, r Store, partID uuid.UUID, items []*models.InventoryItem) error {
 	slots, e := r.Components(ctx, partID)
 	if e != nil {
@@ -177,41 +177,39 @@ func build(ctx context.Context, r Store, partID uuid.UUID, items []*models.Inven
 	for _, slot := range slots {
 		need[slot.ChildPartID] += slot.RequiredQuantity * len(items)
 	}
+	stock := map[uuid.UUID][]uuid.UUID{}
 	for _, slot := range slots {
-		n, ok := need[slot.ChildPartID]
-		if !ok {
+		child := slot.ChildPartID
+		if _, done := stock[child]; done {
 			continue
 		}
-		delete(need, slot.ChildPartID)
-		stock, e := r.Items(ctx, models.Filter{PartID: &slot.ChildPartID, Available: true, Limit: 1})
+		ids, e := r.AvailableItems(ctx, child, need[child])
 		if e != nil {
 			return e
 		}
-		if stock.Total < int64(n) {
-			return apperrors.Conflict(fmt.Sprintf("Not enough %s (%s) in stock: need %d, have %d", slot.ChildPart.Name, slot.ChildPart.SKU, n, stock.Total))
+		if len(ids) < need[child] {
+			return apperrors.Conflict(fmt.Sprintf("Not enough %s (%s) in stock: need %d, have %d", slot.ChildPart.Name, slot.ChildPart.SKU, need[child], len(ids)))
 		}
+		stock[child] = ids
 	}
+	installs := []*models.ItemComponent{}
 	for _, item := range items {
-		if e := r.Create(ctx, item); e != nil {
-			return e
-		}
 		for _, slot := range slots {
-			stock, e := r.Items(ctx, models.Filter{PartID: &slot.ChildPartID, Available: true, Limit: slot.RequiredQuantity})
-			if e != nil {
-				return e
+			ids := stock[slot.ChildPartID]
+			for _, child := range ids[:slot.RequiredQuantity] {
+				installs = append(installs, newInstallation(item.ID, child, slot.ID, nil))
 			}
-			for _, child := range stock.Data {
-				if e := r.Create(ctx, newInstallation(item.ID, child.ID, slot.ID)); e != nil {
-					return e
-				}
-			}
+			stock[slot.ChildPartID] = ids[slot.RequiredQuantity:]
 		}
 	}
-	return nil
+	if e := r.Create(ctx, items); e != nil || len(installs) == 0 {
+		return e
+	}
+	return r.Create(ctx, installs)
 }
 
-func newInstallation(parent, child, slot uuid.UUID) *models.ItemComponent {
-	return &models.ItemComponent{ID: uuid.New(), ParentItemID: parent, ComponentItemID: child, PartComponentID: slot, InstalledAt: time.Now().UTC(), BOMSnapshot: models.JSONMap{}}
+func newInstallation(parent, child, slot uuid.UUID, position *string) *models.ItemComponent {
+	return &models.ItemComponent{ID: uuid.New(), ParentItemID: parent, ComponentItemID: child, PartComponentID: slot, Position: position, InstalledAt: time.Now().UTC(), BOMSnapshot: models.JSONMap{}}
 }
 
 // Replace swaps the item in an active installation for another available item
@@ -239,7 +237,7 @@ func (s *Service) Replace(ctx context.Context, parent, installation, child uuid.
 		if e := r.Remove(ctx, parent, installation); e != nil {
 			return e
 		}
-		next := newInstallation(parent, child, old.PartComponentID)
+		next := newInstallation(parent, child, old.PartComponentID, old.Position)
 		if e := r.Create(ctx, next); e != nil {
 			return e
 		}
@@ -252,11 +250,11 @@ func (s *Service) Replace(ctx context.Context, parent, installation, child uuid.
 // bomLocked rejects BOM changes while the part has items: they were built to
 // the current BOM and must keep matching it.
 func bomLocked(ctx context.Context, r Store, partID uuid.UUID) error {
-	items, e := r.Items(ctx, models.Filter{PartID: &partID, Limit: 1})
+	locked, e := r.HasItems(ctx, partID)
 	if e != nil {
 		return e
 	}
-	if items.Total > 0 {
+	if locked {
 		return apperrors.Conflict("The BOM cannot change while this SKU has items in inventory")
 	}
 	return nil
@@ -296,9 +294,27 @@ func (s *Service) DeleteComponent(ctx context.Context, parent, id uuid.UUID) err
 		return r.DeleteComponent(ctx, id)
 	})
 }
+
+// ArchivePart deletes a part together with all its items. The database
+// rejects it while any of those items is installed elsewhere or the part is
+// in another active BOM.
 func (s *Service) ArchivePart(ctx context.Context, id uuid.UUID) error {
 	return s.write(ctx, func(r Store) error {
-		if _, e := r.GetPart(ctx, id); e != nil {
+		p, e := r.GetPart(ctx, id)
+		if e != nil {
+			return e
+		}
+		// Installed items always belong to such a BOM, so this names the blocker
+		uses, e := r.ParentComponents(ctx, id)
+		if e != nil {
+			return e
+		}
+		for _, use := range uses {
+			if use.ParentPart != nil && use.ParentPart.ArchivedAt == nil {
+				return apperrors.Conflict(fmt.Sprintf("%s is used in the BOM of %s; remove it there first", p.Name, use.ParentPart.Name))
+			}
+		}
+		if e := r.ArchivePartItems(ctx, id); e != nil {
 			return e
 		}
 		return r.Archive(ctx, &models.Part{}, id)
@@ -395,18 +411,6 @@ func (s *Service) UpdateComponent(ctx context.Context, parent, id uuid.UUID, p m
 	})
 	return
 }
-func (s *Service) PatchPart(ctx context.Context, id uuid.UUID, p map[string]any) error {
-	_, e := s.UpdatePart(ctx, id, p)
-	return e
-}
-func (s *Service) PatchItem(ctx context.Context, id uuid.UUID, p map[string]any) error {
-	_, e := s.UpdateItem(ctx, id, p)
-	return e
-}
-func (s *Service) PatchComponent(ctx context.Context, parent, id uuid.UUID, p map[string]any) error {
-	_, e := s.UpdateComponent(ctx, parent, id, p)
-	return e
-}
 func validatePatch(p map[string]any, allowed string) error {
 	for k, v := range p {
 		if !strings.Contains(" "+allowed+" ", " "+k+" ") {
@@ -451,7 +455,7 @@ func validatePatch(p map[string]any, allowed string) error {
 					return apperrors.Invalid(k + " must be a string or null")
 				} else {
 					t = strings.TrimSpace(t)
-					if (k == "serial_number" || k == "location" || k == "description") && t == "" {
+					if t == "" {
 						p[k] = nil
 					} else {
 						p[k] = t

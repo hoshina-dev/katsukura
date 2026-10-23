@@ -104,6 +104,11 @@ export function updatePart(
   return send<Part>("PATCH", `/parts/${id}`, patch);
 }
 
+// Archives the part and all its items; the API keeps them for history
+export function archivePart(id: string) {
+  return send<unknown>("DELETE", `/parts/${id}`);
+}
+
 export function deleteComponent(partId: string, componentId: string) {
   return send<unknown>("DELETE", `/parts/${partId}/components/${componentId}`);
 }

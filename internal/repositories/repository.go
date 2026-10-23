@@ -44,8 +44,26 @@ func (r *Repository) GetInstallation(ctx context.Context, id uuid.UUID) (*models
 	e := r.db.WithContext(ctx).Preload("ComponentItem.Part").First(v, "id = ?", id).Error
 	return v, e
 }
+
+// Create inserts a row, or a slice of rows in batches
 func (r *Repository) Create(ctx context.Context, v any) error {
-	return r.db.WithContext(ctx).Omit("ChildPart", "ParentPart", "Part", "ComponentItem", "ParentItem").Create(v).Error
+	return r.db.WithContext(ctx).Omit("ChildPart", "ParentPart", "Part", "ComponentItem", "ParentItem").CreateInBatches(v, 1000).Error
+}
+
+const notInstalled = "NOT EXISTS (SELECT 1 FROM item_components c WHERE c.component_item_id = inventory_items.id AND c.removed_at IS NULL)"
+
+// AvailableItems returns up to limit ids of a part's items that are not
+// installed anywhere, oldest first
+func (r *Repository) AvailableItems(ctx context.Context, partID uuid.UUID, limit int) ([]uuid.UUID, error) {
+	ids := []uuid.UUID{}
+	e := r.db.WithContext(ctx).Model(&models.InventoryItem{}).
+		Where("part_id = ? AND archived_at IS NULL AND "+notInstalled, partID).
+		Order("created_at, id").Limit(limit).Pluck("id", &ids).Error
+	return ids, e
+}
+func (r *Repository) HasItems(ctx context.Context, partID uuid.UUID) (ok bool, e error) {
+	e = r.db.WithContext(ctx).Raw("SELECT EXISTS (SELECT 1 FROM inventory_items WHERE part_id = ? AND archived_at IS NULL)", partID).Scan(&ok).Error
+	return
 }
 func (r *Repository) Update(ctx context.Context, v any, id uuid.UUID, fields map[string]any) error {
 	return r.db.WithContext(ctx).Model(v).Where("id = ?", id).Updates(fields).Error
@@ -122,7 +140,7 @@ func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[mo
 		q = q.Where("inventory_items.part_id = ?", *f.PartID)
 	}
 	if f.Available {
-		q = q.Where("NOT EXISTS (SELECT 1 FROM item_components c WHERE c.component_item_id = inventory_items.id AND c.removed_at IS NULL)")
+		q = q.Where(notInstalled)
 	}
 	if f.Search != "" {
 		q = q.Joins("JOIN parts ON parts.id = inventory_items.part_id").Where("inventory_items.serial_number ILIKE ? OR parts.sku ILIKE ? OR parts.name ILIKE ?", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%")
@@ -214,6 +232,16 @@ func (r *Repository) Tree(ctx context.Context, id uuid.UUID, depth int) (*models
 	return nil, gorm.ErrRecordNotFound
 }
 
+// ArchivePartItems archives every item of a part; composites release their
+// components first, so those return to stock
+func (r *Repository) ArchivePartItems(ctx context.Context, partID uuid.UUID) error {
+	db := r.db.WithContext(ctx)
+	if e := db.Exec(`UPDATE item_components SET removed_at = clock_timestamp() WHERE removed_at IS NULL
+		AND parent_item_id IN (SELECT id FROM inventory_items WHERE part_id = ? AND archived_at IS NULL)`, partID).Error; e != nil {
+		return e
+	}
+	return db.Exec("UPDATE inventory_items SET archived_at = clock_timestamp() WHERE part_id = ? AND archived_at IS NULL", partID).Error
+}
 func (r *Repository) Archive(ctx context.Context, v any, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Model(v).Where("id=? AND archived_at IS NULL", id).Update("archived_at", gorm.Expr("clock_timestamp()")).Error
 }
