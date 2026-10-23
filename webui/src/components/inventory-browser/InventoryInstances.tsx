@@ -22,7 +22,6 @@ import { useState, useTransition } from "react";
 
 import { addItems, deleteItems } from "@/app/backoffice/actions";
 import {
-  assemblyLabel,
   type Item,
   itemHref,
   ITEMS_PAGE_PARAM,
@@ -154,7 +153,6 @@ export function InventoryInstances({
               <TableThead>
                 <TableTr>
                   <TableTh>Serial number</TableTh>
-                  <TableTh>Assembly state</TableTh>
                   <TableTh>Location</TableTh>
                   <TableTh />
                   {editable && <TableTh w={40} />}
@@ -170,7 +168,6 @@ export function InventoryInstances({
                         </Text>
                       )}
                     </TableTd>
-                    <TableTd>{assemblyLabel(item.assembly_state)}</TableTd>
                     <TableTd>{item.location ?? "—"}</TableTd>
                     <TableTd ta="right">
                       <Link
@@ -217,7 +214,7 @@ export function InventoryInstances({
           message={`Delete ${selected.size} selected ${selected.size === 1 ? "item" : "items"}? They are archived and removed from inventory.`}
           confirmLabel="Delete"
           loading={pending}
-          onConfirm={() => run(() => deleteItems(partId, [...selected]))}
+          onConfirm={() => run(() => deleteItems([...selected]))}
           onClose={() => setConfirming(false)}
         />
       )}

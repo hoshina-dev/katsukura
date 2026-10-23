@@ -145,65 +145,52 @@ type ItemFilter = {
   limit?: number;
   offset?: number;
   search?: string;
-  // Only what the public inventory shows (computed by the API)
-  publicOnly?: boolean;
-  // Only items not installed anywhere
+  // Only items not installed anywhere: the public stock
   available?: boolean;
 };
 
-const visibility = (publicOnly?: boolean) =>
-  publicOnly ? "public" : undefined;
+const flag = (on?: boolean) => (on ? "true" : undefined);
 
 export function listItems(partId: string, filter: ItemFilter = {}) {
-  const { limit = 100, offset, search, publicOnly, available } = filter;
+  const { limit = 100, offset, search, available } = filter;
   return get<List<Item>>(
     `/inventory?${qs({
       part_id: partId,
       limit,
       offset,
       search,
-      visibility: visibility(publicOnly),
-      available: available ? "true" : undefined,
+      available: flag(available),
     })}`,
   );
 }
 
-// publicOnly: 404 unless the public inventory may show this item
-export function getItem(id: string, publicOnly?: boolean) {
-  return get<ItemDetail>(
-    `/inventory/${id}?${qs({ visibility: visibility(publicOnly) })}`,
-  );
+export function getItem(id: string) {
+  return get<ItemDetail>(`/inventory/${id}`);
 }
 
 export function updateItem(
   id: string,
-  patch: Partial<Pick<Item, "location" | "assembly_state" | "metadata">>,
+  patch: Partial<Pick<Item, "location" | "metadata">>,
 ) {
   return send<Item>("PATCH", `/inventory/${id}`, patch);
 }
 
-export function installItem(
+// Swaps an installed component for an available item of the same SKU
+export function replaceComponent(
   parentId: string,
-  partComponentId: string,
+  installationId: string,
   childId: string,
 ) {
-  return send<Installation>("POST", `/inventory/${parentId}/components`, {
-    component_item_id: childId,
-    part_component_id: partComponentId,
-  });
-}
-
-// Ends an installation; the API keeps it as history
-export function removeInstallation(parentId: string, installationId: string) {
-  return send<unknown>(
-    "DELETE",
-    `/inventory/${parentId}/components/${installationId}`,
+  return send<Installation>(
+    "POST",
+    `/inventory/${parentId}/components/${installationId}/replace`,
+    { component_item_id: childId },
   );
 }
 
 export type NewComponent = Pick<
   PartComponent,
-  "child_part_id" | "slot" | "required_quantity" | "is_optional"
+  "child_part_id" | "slot" | "required_quantity"
 >;
 
 export function createComponent(partId: string, component: NewComponent) {
@@ -213,7 +200,7 @@ export function createComponent(partId: string, component: NewComponent) {
 export function updateComponent(
   partId: string,
   componentId: string,
-  patch: Partial<Pick<PartComponent, "required_quantity" | "is_optional">>,
+  patch: Partial<Pick<PartComponent, "required_quantity">>,
 ) {
   return send<PartComponent>(
     "PATCH",
@@ -232,20 +219,23 @@ export function getItemTree(id: string) {
 
 // Catalog
 
-// Stock: items of the SKU, limited to publicly listed ones for the public UI
-async function stockCount(partId: string, publicOnly: boolean) {
+// Stock: items of the SKU; the public UI counts only those not installed
+async function stockCount(partId: string, availableOnly: boolean) {
   const list = await get<List<Item>>(
-    `/inventory?${qs({ part_id: partId, limit: 1, visibility: visibility(publicOnly) })}`,
+    `/inventory?${qs({ part_id: partId, limit: 1, available: flag(availableOnly) })}`,
     LOOKUP_TTL_SECONDS,
     [ITEMS_TAG],
   );
   return list.total;
 }
 
-async function toEntry(part: Part, publicOnly: boolean): Promise<CatalogEntry> {
+async function toEntry(
+  part: Part,
+  availableOnly: boolean,
+): Promise<CatalogEntry> {
   const [detail, stock] = await Promise.all([
     getPart(part.id),
-    stockCount(part.id, publicOnly),
+    stockCount(part.id, availableOnly),
   ]);
   return {
     id: part.id,
@@ -268,19 +258,25 @@ async function allParts(search: string) {
   }
 }
 
-async function toEntries(parts: Part[], publicOnly: boolean, batchSize = 10) {
+async function toEntries(
+  parts: Part[],
+  availableOnly: boolean,
+  batchSize = 10,
+) {
   const entries: CatalogEntry[] = [];
   for (let i = 0; i < parts.length; i += batchSize) {
     entries.push(
       ...(await Promise.all(
-        parts.slice(i, i + batchSize).map((part) => toEntry(part, publicOnly)),
+        parts
+          .slice(i, i + batchSize)
+          .map((part) => toEntry(part, availableOnly)),
       )),
     );
   }
   return entries;
 }
 
-export async function getCatalog(query: CatalogQuery, publicOnly: boolean) {
+export async function getCatalog(query: CatalogQuery, availableOnly: boolean) {
   const offset = (query.page - 1) * CATALOG_PAGE_SIZE;
 
   if (query.type === "all" && query.stock === "all") {
@@ -289,7 +285,7 @@ export async function getCatalog(query: CatalogQuery, publicOnly: boolean) {
     );
     return {
       entries: await Promise.all(
-        list.data.map((part) => toEntry(part, publicOnly)),
+        list.data.map((part) => toEntry(part, availableOnly)),
       ),
       total: list.total,
     };
@@ -297,7 +293,7 @@ export async function getCatalog(query: CatalogQuery, publicOnly: boolean) {
 
   // PAPI cannot filter by product/part or stock yet, so filter the matching SKUs here
   const entries = (
-    await toEntries(await allParts(query.search), publicOnly)
+    await toEntries(await allParts(query.search), availableOnly)
   ).filter(
     (entry) =>
       (query.type === "all" ||
@@ -333,7 +329,6 @@ export async function getBomTree(part: PartDetail, maxDepth = 10) {
           id: component.id,
           slot: component.slot,
           quantity: component.required_quantity,
-          optional: component.is_optional,
           part: { id: child.id, sku: child.sku, name: child.name },
           children: canExpand
             ? await build(child, new Set(path).add(child.id))

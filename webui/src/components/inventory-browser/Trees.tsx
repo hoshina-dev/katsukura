@@ -1,8 +1,7 @@
-import { Badge, Text } from "@mantine/core";
+import { Text } from "@mantine/core";
 import Link from "next/link";
 
 import {
-  assemblyLabel,
   type BomNode,
   itemHref,
   skuHref,
@@ -41,11 +40,6 @@ export function BomTree({
           <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
             × {node.quantity}
           </Text>
-          {node.optional && (
-            <Badge size="xs" variant="outline" color="gray">
-              Optional
-            </Badge>
-          )}
           <Text size="xs" c="dimmed" ff="monospace" ml="auto" truncate>
             {node.slot}
           </Text>
@@ -87,10 +81,11 @@ export function InstalledTree({
           <Text size="xs" c="dimmed" ff="monospace" truncate>
             {item.serial_number ?? "Unserialized"}
           </Text>
-          <Text size="xs" c="dimmed" ml="auto" style={{ flexShrink: 0 }}>
-            {assemblyLabel(item.assembly_state)}
-            {truncated ? " · more not shown" : ""}
-          </Text>
+          {truncated && (
+            <Text size="xs" c="dimmed" ml="auto" style={{ flexShrink: 0 }}>
+              more not shown
+            </Text>
+          )}
         </>
       }
       nested={

@@ -45,7 +45,7 @@ export async function SkuDetail({ sku, params, editable }: SkuDetailProps) {
     listItems(part.id, {
       limit: ITEMS_PAGE_SIZE,
       offset: (page - 1) * ITEMS_PAGE_SIZE,
-      publicOnly: !editable,
+      available: !editable,
     }),
     isProduct ? getBomTree(part) : Promise.resolve([]),
   ]);

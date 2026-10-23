@@ -21,7 +21,6 @@ export type PartComponent = {
   child_part_id: string;
   slot: string;
   required_quantity: number;
-  is_optional: boolean;
   child_part?: Part;
 };
 
@@ -31,7 +30,6 @@ export type Item = {
   id: string;
   part_id: string;
   serial_number: string | null;
-  assembly_state: "draft" | "complete";
   location: string | null;
   metadata: Metadata;
   archived_at: string | null;
@@ -71,7 +69,6 @@ export type BomNode = {
   id: string;
   slot: string;
   quantity: number;
-  optional: boolean;
   part: Pick<Part, "id" | "sku" | "name">;
   children: BomNode[];
 };
@@ -154,8 +151,4 @@ export function slotName(name: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
-}
-
-export function assemblyLabel(state: Item["assembly_state"]) {
-  return state === "complete" ? "Complete" : "Draft";
 }

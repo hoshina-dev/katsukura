@@ -5,7 +5,6 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
   Group,
   NumberInput,
   Select,
@@ -143,7 +142,7 @@ export function BomSection({
   );
 }
 
-// Direct children of the BOM: change quantity or optional, delete, or add one.
+// Direct children of the BOM: change quantity, delete, or add one.
 // The API rejects cycles, duplicate slots and changes that history depends on.
 function BomEditor({
   partId,
@@ -177,14 +176,13 @@ function BomEditor({
                 <TableTh>Component</TableTh>
                 <TableTh>Slot</TableTh>
                 <TableTh w={110}>Quantity</TableTh>
-                <TableTh w={90}>Optional</TableTh>
                 <TableTh w={120} />
               </TableTr>
             </TableThead>
             <TableTbody>
               {components.map((component) => (
                 <BomRow
-                  key={`${component.id}-${component.required_quantity}-${component.is_optional}`}
+                  key={`${component.id}-${component.required_quantity}`}
                   component={component}
                   pending={pending}
                   onSave={(patch) =>
@@ -235,16 +233,14 @@ function BomRow({
 }: {
   component: PartComponent;
   pending: boolean;
-  onSave: (patch: { required_quantity: number; is_optional: boolean }) => void;
+  onSave: (patch: { required_quantity: number }) => void;
   onDelete: () => void;
 }) {
   const [quantity, setQuantity] = useState<string | number>(
     component.required_quantity,
   );
-  const [optional, setOptional] = useState(component.is_optional);
   const count = Number(quantity);
-  const changed =
-    count !== component.required_quantity || optional !== component.is_optional;
+  const changed = count !== component.required_quantity;
   const child = component.child_part;
 
   return (
@@ -277,22 +273,13 @@ function BomRow({
         />
       </TableTd>
       <TableTd>
-        <Checkbox
-          aria-label={`${component.slot} is optional`}
-          checked={optional}
-          onChange={(event) => setOptional(event.currentTarget.checked)}
-        />
-      </TableTd>
-      <TableTd>
         <Group gap="xs" justify="flex-end" wrap="nowrap">
           <Button
             size="xs"
             variant="light"
             disabled={!changed || !Number.isInteger(count) || count < 1}
             loading={pending}
-            onClick={() =>
-              onSave({ required_quantity: count, is_optional: optional })
-            }
+            onClick={() => onSave({ required_quantity: count })}
           >
             Save
           </Button>
@@ -322,7 +309,6 @@ function AddChild({
       child_part_id: string;
       slot: string;
       required_quantity: number;
-      is_optional: boolean;
     },
     reset: () => void,
   ) => void;
@@ -333,7 +319,6 @@ function AddChild({
   const [childId, setChildId] = useState<string | null>(null);
   const [slot, setSlot] = useState("");
   const [quantity, setQuantity] = useState<string | number>(1);
-  const [optional, setOptional] = useState(false);
   const count = Number(quantity);
 
   useEffect(() => {
@@ -351,7 +336,6 @@ function AddChild({
     setSearch("");
     setSlot("");
     setQuantity(1);
-    setOptional(false);
   };
 
   return (
@@ -393,12 +377,6 @@ function AddChild({
         allowNegative={false}
         w={100}
       />
-      <Checkbox
-        label="Optional"
-        checked={optional}
-        onChange={(event) => setOptional(event.currentTarget.checked)}
-        mb={8}
-      />
       <Button
         leftSection={<IconPlus size={16} />}
         disabled={
@@ -412,7 +390,6 @@ function AddChild({
               child_part_id: childId,
               slot: slot.trim(),
               required_quantity: count,
-              is_optional: optional,
             },
             reset,
           )

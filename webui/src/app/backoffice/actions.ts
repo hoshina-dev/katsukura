@@ -10,14 +10,13 @@ import {
   createItems,
   createPart,
   deleteComponent,
-  installItem,
   listItems,
   type NewComponent,
   ITEMS_TAG,
   type NewPart,
   PapiError,
   partTag,
-  removeInstallation,
+  replaceComponent,
   searchParts,
   updateComponent,
   updateItem,
@@ -113,7 +112,7 @@ export async function addItems(partId: string, count: number) {
   return {};
 }
 
-export async function deleteItems(partId: string, itemIds: string[]) {
+export async function deleteItems(itemIds: string[]) {
   const result = await inBatches(itemIds, archiveItem, "deleted");
   updateTag(ITEMS_TAG);
   return result;
@@ -134,7 +133,6 @@ export async function saveItem(
   itemId: string,
   patch: {
     location: string | null;
-    assembly_state: "draft" | "complete";
     metadata: Record<string, unknown>;
   },
 ): Promise<SubmitResult> {
@@ -147,7 +145,7 @@ export async function saveItem(
   return {};
 }
 
-// Items of a SKU that are not installed anywhere, for the install picker
+// Items of a SKU that are not installed anywhere, for the replace picker
 export async function findAvailableItems(partId: string, search: string) {
   const list = await listItems(partId, {
     available: true,
@@ -157,27 +155,14 @@ export async function findAvailableItems(partId: string, search: string) {
   return { items: list.data, total: list.total };
 }
 
-// The API rejects items that were installed elsewhere in the meantime
-export async function installItems(
-  parentItemId: string,
-  partComponentId: string,
-  itemIds: string[],
-) {
-  const result = await inBatches(
-    itemIds,
-    (id) => installItem(parentItemId, partComponentId, id),
-    "installed",
-  );
-  updateTag(ITEMS_TAG);
-  return result;
-}
-
-export async function uninstallItem(
+// The API rejects an item that was installed elsewhere in the meantime
+export async function replaceItem(
   parentItemId: string,
   installationId: string,
+  itemId: string,
 ): Promise<SubmitResult> {
   try {
-    await removeInstallation(parentItemId, installationId);
+    await replaceComponent(parentItemId, installationId, itemId);
   } catch (error) {
     return toResult(error);
   }
@@ -212,7 +197,7 @@ export async function addBomChild(
 export async function updateBomChild(
   partId: string,
   componentId: string,
-  patch: { required_quantity: number; is_optional: boolean },
+  patch: { required_quantity: number },
 ): Promise<SubmitResult> {
   return changeBom(partId, () => updateComponent(partId, componentId, patch));
 }

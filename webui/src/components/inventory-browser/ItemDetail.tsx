@@ -15,7 +15,7 @@ import {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { assemblyLabel, imageUrls, itemHref, skuHref } from "@/libs/inventory";
+import { imageUrls, itemHref, skuHref } from "@/libs/inventory";
 import { getItem, getItemTree, getPart, isMissing } from "@/libs/papiRest";
 
 import { InstalledComponents } from "./InstalledComponents";
@@ -41,12 +41,14 @@ interface ItemDetailProps {
 export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
   const base = editable ? "/backoffice" : "/inventory";
   const [item, tree] = await Promise.all([
-    getItem(itemId, !editable),
+    getItem(itemId),
     getItemTree(itemId),
   ]).catch((error) => {
     if (isMissing(error)) notFound();
     throw error;
   });
+  // Deleted items only remain visible in the backoffice
+  if (!editable && item.archived_at) notFound();
   const part = await getPart(item.part_id);
 
   const installedCount = (componentId: string) =>
@@ -96,12 +98,9 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
       )}
 
       <Section title="Item details">
-        <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="lg">
+        <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="lg">
           <Field label="Serial number">
             {item.serial_number ?? "Unserialized"}
-          </Field>
-          <Field label="Assembly state">
-            {assemblyLabel(item.assembly_state)}
           </Field>
           <Field label="Location">{item.location ?? "—"}</Field>
           <Field label="Installed in">
@@ -129,7 +128,6 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
         <ItemEditor
           itemId={item.id}
           location={item.location}
-          assemblyState={item.assembly_state}
           metadata={item.metadata}
         />
       ) : (
@@ -199,10 +197,7 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
                           {component.slot}
                         </Text>
                       </TableTd>
-                      <TableTd>
-                        {component.required_quantity}
-                        {component.is_optional ? " (optional)" : ""}
-                      </TableTd>
+                      <TableTd>{component.required_quantity}</TableTd>
                       <TableTd>
                         <Text
                           size="sm"
