@@ -119,12 +119,6 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 	if i.PartID == uuid.Nil {
 		return apperrors.Invalid("part_id is required")
 	}
-	if i.AssemblyState == "" {
-		i.AssemblyState = "draft"
-	}
-	if i.AssemblyState != "draft" && i.AssemblyState != "complete" {
-		return apperrors.Invalid("Invalid assembly_state")
-	}
 	i.SerialNumber = trimNullable(i.SerialNumber)
 	i.Location = trimNullable(i.Location)
 	i.ID = uuid.New()
@@ -139,7 +133,7 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 		if _, e := r.GetPart(ctx, i.PartID); e != nil {
 			return e
 		}
-		return r.Create(ctx, i)
+		return build(ctx, r, i.PartID, []*models.InventoryItem{i})
 	})
 }
 
@@ -149,7 +143,7 @@ func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int) 
 	if count < 1 || count > MaxNewItems {
 		return nil, apperrors.Invalid(fmt.Sprintf("count must be between 1 and %d", MaxNewItems))
 	}
-	items := make([]models.InventoryItem, count)
+	items := make([]*models.InventoryItem, count)
 	e := s.write(ctx, func(r Store) error {
 		p, e := r.GetPart(ctx, partID)
 		if e != nil {
@@ -157,17 +151,115 @@ func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int) 
 		}
 		for i := range items {
 			serial := newSerialNumber()
-			items[i] = models.InventoryItem{ID: uuid.New(), PartID: partID, SerialNumber: &serial, AssemblyState: "draft", Metadata: p.Metadata}
-			if e := r.Create(ctx, &items[i]); e != nil {
-				return e
-			}
+			items[i] = &models.InventoryItem{ID: uuid.New(), PartID: partID, SerialNumber: &serial, Metadata: p.Metadata}
 		}
-		return nil
+		return build(ctx, r, partID, items)
 	})
 	if e != nil {
 		return nil, e
 	}
-	return items, nil
+	v := make([]models.InventoryItem, count)
+	for i, item := range items {
+		v[i] = *item
+	}
+	return v, nil
+}
+
+// build creates items of a part and fills every BOM slot from available
+// stock, so a composite item is complete from the start. It fails before
+// writing anything when stock is short.
+func build(ctx context.Context, r Store, partID uuid.UUID, items []*models.InventoryItem) error {
+	slots, e := r.Components(ctx, partID)
+	if e != nil {
+		return e
+	}
+	need := map[uuid.UUID]int{}
+	for _, slot := range slots {
+		need[slot.ChildPartID] += slot.RequiredQuantity * len(items)
+	}
+	for _, slot := range slots {
+		n, ok := need[slot.ChildPartID]
+		if !ok {
+			continue
+		}
+		delete(need, slot.ChildPartID)
+		stock, e := r.Items(ctx, models.Filter{PartID: &slot.ChildPartID, Available: true, Limit: 1})
+		if e != nil {
+			return e
+		}
+		if stock.Total < int64(n) {
+			return apperrors.Conflict(fmt.Sprintf("Not enough %s (%s) in stock: need %d, have %d", slot.ChildPart.Name, slot.ChildPart.SKU, n, stock.Total))
+		}
+	}
+	for _, item := range items {
+		if e := r.Create(ctx, item); e != nil {
+			return e
+		}
+		for _, slot := range slots {
+			stock, e := r.Items(ctx, models.Filter{PartID: &slot.ChildPartID, Available: true, Limit: slot.RequiredQuantity})
+			if e != nil {
+				return e
+			}
+			for _, child := range stock.Data {
+				if e := r.Create(ctx, newInstallation(item.ID, child.ID, slot.ID)); e != nil {
+					return e
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func newInstallation(parent, child, slot uuid.UUID) *models.ItemComponent {
+	return &models.ItemComponent{ID: uuid.New(), ParentItemID: parent, ComponentItemID: child, PartComponentID: slot, InstalledAt: time.Now().UTC(), BOMSnapshot: models.JSONMap{}}
+}
+
+// Replace swaps the item in an active installation for another available item
+// of the same SKU. The old item returns to stock; history keeps both.
+func (s *Service) Replace(ctx context.Context, parent, installation, child uuid.UUID) (v *models.ItemComponent, e error) {
+	e = s.write(ctx, func(r Store) error {
+		old, e := r.GetInstallation(ctx, installation)
+		if e != nil {
+			return e
+		}
+		if old.ParentItemID != parent || old.RemovedAt != nil {
+			return apperrors.NotFound()
+		}
+		item, e := r.GetItem(ctx, child)
+		if e != nil {
+			return e
+		}
+		slot, e := r.GetComponent(ctx, old.PartComponentID)
+		if e != nil {
+			return e
+		}
+		if item.PartID != slot.ChildPartID {
+			return &apperrors.Error{Status: 409, Code: "slot_mismatch", Message: "Items must match the exact parent and child SKUs of this BOM slot"}
+		}
+		if e := r.Remove(ctx, parent, installation); e != nil {
+			return e
+		}
+		next := newInstallation(parent, child, old.PartComponentID)
+		if e := r.Create(ctx, next); e != nil {
+			return e
+		}
+		v, e = r.GetInstallation(ctx, next.ID)
+		return e
+	})
+	return
+}
+
+// bomLocked rejects BOM changes while the part has items: they were built to
+// the current BOM and must keep matching it.
+func bomLocked(ctx context.Context, r Store, partID uuid.UUID) error {
+	items, e := r.Items(ctx, models.Filter{PartID: &partID, Limit: 1})
+	if e != nil {
+		return e
+	}
+	if items.Total > 0 {
+		return apperrors.Conflict("The BOM cannot change while this SKU has items in inventory")
+	}
+	return nil
 }
 func (s *Service) CreateComponent(ctx context.Context, parent uuid.UUID, c *models.PartComponent) error {
 	if c.ChildPartID == uuid.Nil || strings.TrimSpace(c.Slot) == "" || (c.RequiredQuantity < 1 || c.RequiredQuantity > 2147483647) {
@@ -183,68 +275,10 @@ func (s *Service) CreateComponent(ctx context.Context, parent uuid.UUID, c *mode
 		if _, e := r.GetPart(ctx, c.ChildPartID); e != nil {
 			return e
 		}
-		if e := r.Create(ctx, c); e != nil {
+		if e := bomLocked(ctx, r, parent); e != nil {
 			return e
 		}
-		return r.DemoteIncomplete(ctx, nil)
-	})
-}
-func (s *Service) Install(ctx context.Context, parent uuid.UUID, i *models.ItemComponent) error {
-	if i.ComponentItemID == uuid.Nil || i.PartComponentID == uuid.Nil {
-		return apperrors.Invalid("component_item_id and part_component_id are required")
-	}
-	i.ID = uuid.New()
-	i.ParentItemID = parent
-	i.Position = trimNullable(i.Position)
-	i.InstalledAt = time.Now().UTC()
-	i.RemovedAt = nil
-	i.BOMSnapshot = models.JSONMap{}
-	return s.write(ctx, func(r Store) error {
-		p, e := r.GetItem(ctx, parent)
-		if e != nil {
-			return e
-		}
-		child, e := r.GetItem(ctx, i.ComponentItemID)
-		if e != nil {
-			return e
-		}
-		slot, e := r.GetComponent(ctx, i.PartComponentID)
-		if e != nil {
-			return e
-		}
-		if slot.ParentPartID != p.PartID || slot.ChildPartID != child.PartID {
-			return &apperrors.Error{Status: 409, Code: "slot_mismatch", Message: "Items must match the exact parent and child SKUs of this BOM slot"}
-		}
-		if e = r.Create(ctx, i); e != nil {
-			return e
-		}
-		if e = r.DemoteIncomplete(ctx, nil); e != nil {
-			return e
-		}
-		fresh, e := r.GetInstallation(ctx, i.ID)
-		if e != nil {
-			return e
-		}
-		*i = *fresh
-		return nil
-	})
-}
-func (s *Service) Remove(ctx context.Context, parent, id uuid.UUID) error {
-	return s.write(ctx, func(r Store) error {
-		i, e := r.GetInstallation(ctx, id)
-		if e != nil {
-			return e
-		}
-		if i.ParentItemID != parent {
-			return apperrors.NotFound()
-		}
-		if i.RemovedAt != nil {
-			return nil
-		}
-		if e := r.Remove(ctx, parent, id); e != nil {
-			return e
-		}
-		return r.DemoteIncomplete(ctx, nil)
+		return r.Create(ctx, c)
 	})
 }
 func (s *Service) DeleteComponent(ctx context.Context, parent, id uuid.UUID) error {
@@ -255,6 +289,9 @@ func (s *Service) DeleteComponent(ctx context.Context, parent, id uuid.UUID) err
 		}
 		if c.ParentPartID != parent {
 			return apperrors.NotFound()
+		}
+		if e := bomLocked(ctx, r, parent); e != nil {
+			return e
 		}
 		return r.DeleteComponent(ctx, id)
 	})
@@ -267,10 +304,22 @@ func (s *Service) ArchivePart(ctx context.Context, id uuid.UUID) error {
 		return r.Archive(ctx, &models.Part{}, id)
 	})
 }
+
+// ArchiveItem deletes an item. A composite item releases its components back
+// to stock in the same transaction; an installed item must be released first.
 func (s *Service) ArchiveItem(ctx context.Context, id uuid.UUID) error {
 	return s.write(ctx, func(r Store) error {
 		if _, e := r.GetItem(ctx, id); e != nil {
 			return e
+		}
+		active, e := r.Installations(ctx, id, true)
+		if e != nil {
+			return e
+		}
+		for _, c := range active {
+			if e := r.Remove(ctx, id, c.ID); e != nil {
+				return e
+			}
 		}
 		return r.Archive(ctx, &models.InventoryItem{}, id)
 	})
@@ -292,23 +341,25 @@ func (s *Service) UpdatePart(ctx context.Context, id uuid.UUID, p map[string]any
 	return
 }
 func (s *Service) UpdateItem(ctx context.Context, id uuid.UUID, p map[string]any) (v *models.InventoryItem, e error) {
-	if e = validatePatch(p, "serial_number assembly_state location metadata archived_at"); e != nil {
+	if e = validatePatch(p, "serial_number location metadata archived_at"); e != nil {
 		return
 	}
 	e = s.write(ctx, func(r Store) error {
-		if _, e := r.GetItem(ctx, id); e != nil {
+		i, e := r.GetItem(ctx, id)
+		if e != nil {
 			return e
+		}
+		// A deleted composite gave its components back, so it stays deleted
+		if _, restore := p["archived_at"]; restore && i.ArchivedAt != nil {
+			slots, e := r.Components(ctx, i.PartID)
+			if e != nil {
+				return e
+			}
+			if len(slots) > 0 {
+				return apperrors.Conflict("A deleted composite item cannot be restored; add a new one instead")
+			}
 		}
 		if e := r.Update(ctx, &models.InventoryItem{}, id, p); e != nil {
-			return e
-		}
-		// Marking an item complete is checked, not undone: leave it for the
-		// database to reject if it is still missing components
-		var except *uuid.UUID
-		if p["assembly_state"] == "complete" {
-			except = &id
-		}
-		if e := r.DemoteIncomplete(ctx, except); e != nil {
 			return e
 		}
 		v, e = r.GetItem(ctx, id)
@@ -317,7 +368,7 @@ func (s *Service) UpdateItem(ctx context.Context, id uuid.UUID, p map[string]any
 	return
 }
 func (s *Service) UpdateComponent(ctx context.Context, parent, id uuid.UUID, p map[string]any) (v *models.PartComponent, e error) {
-	if e = validatePatch(p, "slot required_quantity is_optional child_part_id"); e != nil {
+	if e = validatePatch(p, "slot required_quantity child_part_id"); e != nil {
 		return
 	}
 	e = s.write(ctx, func(r Store) error {
@@ -333,10 +384,10 @@ func (s *Service) UpdateComponent(ctx context.Context, parent, id uuid.UUID, p m
 				return e
 			}
 		}
-		if e = r.Update(ctx, &models.PartComponent{}, id, p); e != nil {
+		if e := bomLocked(ctx, r, parent); e != nil {
 			return e
 		}
-		if e = r.DemoteIncomplete(ctx, nil); e != nil {
+		if e = r.Update(ctx, &models.PartComponent{}, id, p); e != nil {
 			return e
 		}
 		v, e = r.GetComponent(ctx, id)
@@ -394,10 +445,6 @@ func validatePatch(p map[string]any, allowed string) error {
 				return apperrors.Invalid("required_quantity must be a positive integer")
 			}
 			p[k] = int(n)
-		case "is_optional":
-			if _, ok := v.(bool); !ok {
-				return apperrors.Invalid("is_optional must be boolean")
-			}
 		case "description", "serial_number", "location":
 			if v != nil {
 				if t, ok := v.(string); !ok {
@@ -422,9 +469,6 @@ func validatePatch(p map[string]any, allowed string) error {
 				if _, e := uuid.Parse(t); e != nil {
 					return apperrors.Invalid("Invalid child_part_id")
 				}
-			}
-			if k == "assembly_state" && t != "draft" && t != "complete" {
-				return apperrors.Invalid("Invalid assembly_state")
 			}
 		}
 	}
@@ -478,12 +522,6 @@ func (s *Service) Part(ctx context.Context, id uuid.UUID) (v *models.PartDetail,
 	return
 }
 
-// ItemViewable reports whether the public UI may show the item: it is listed
-// in public stock, or installed under an item that is.
-func (s *Service) ItemViewable(ctx context.Context, id uuid.UUID) (ok bool, e error) {
-	e = s.repo.Read(ctx, func(r Store) error { ok, e = r.ItemViewable(ctx, id); return e })
-	return
-}
 func (s *Service) Item(ctx context.Context, id uuid.UUID) (v *models.ItemDetail, e error) {
 	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readItem(ctx, id); return e })
 	return

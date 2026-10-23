@@ -55,23 +55,21 @@ type PartComponent struct {
 	ChildPartID      uuid.UUID `json:"child_part_id"`
 	Slot             string    `json:"slot"`
 	RequiredQuantity int       `json:"required_quantity"`
-	IsOptional       bool      `json:"is_optional"`
 	ChildPart        *Part     `json:"child_part,omitempty" gorm:"foreignKey:ChildPartID"`
 	ParentPart       *Part     `json:"parent_part,omitempty" gorm:"foreignKey:ParentPartID"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 type InventoryItem struct {
-	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
-	PartID        uuid.UUID  `json:"part_id"`
-	SerialNumber  *string    `json:"serial_number"`
-	AssemblyState string     `json:"assembly_state"`
-	Location      *string    `json:"location"`
-	Metadata      JSONMap    `json:"metadata" gorm:"type:jsonb"`
-	ArchivedAt    *time.Time `json:"archived_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	Part          *Part      `json:"part,omitempty" gorm:"foreignKey:PartID"`
+	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
+	PartID       uuid.UUID  `json:"part_id"`
+	SerialNumber *string    `json:"serial_number"`
+	Location     *string    `json:"location"`
+	Metadata     JSONMap    `json:"metadata" gorm:"type:jsonb"`
+	ArchivedAt   *time.Time `json:"archived_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Part         *Part      `json:"part,omitempty" gorm:"foreignKey:PartID"`
 }
 type ItemComponent struct {
 	ID              uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
@@ -107,10 +105,8 @@ type Filter struct {
 	IncludeArchived bool
 	// Available: not installed in any item
 	Available bool
-	// Public: only items listed in public stock (see papi2_item_listed)
-	Public bool
-	Limit  int
-	Offset int
+	Limit     int
+	Offset    int
 }
 type Page[T any] struct {
 	Data   []T   `json:"data"`

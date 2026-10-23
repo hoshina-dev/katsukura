@@ -31,27 +31,23 @@ The UI reads `PAPI_URL` (default `http://localhost:8082`) on the server side.
 
 - `parts`: one schema per unique SKU, with JSONB object metadata. When `sku` is
   omitted on create, the API generates `RF-` plus 8 random hex digits.
-- `part_components`: parent SKU, child SKU, named slot, and quantity upper limit.
+- `part_components`: parent SKU, child SKU, named slot, and exact quantity.
 - `inventory_items`: one physical unit, nullable serial number, string location,
   and JSONB object metadata. Non-null serial numbers are unique within a SKU.
 - `item_components`: installed child items and removal history. A child has only
   one active parent, and its SKU must match the selected BOM slot.
 
+A composite item (one whose SKU has a BOM) always contains exactly its BOM. The API
+builds it in one transaction, taking available items (not installed anywhere) for every
+slot, and fails with `Not enough … in stock` when stock is short. After that, components
+can only be swapped one for one (replace); deleting a composite returns its components
+to stock, and a deleted composite cannot be restored. A SKU's BOM cannot change while it
+has items in inventory. These rules are enforced by the API: the database still accepts
+partial assemblies through direct SQL, so moving the rule into the database is an open
+topic. The legacy `assembly_state` and `is_optional` columns are no longer used.
+
 The installed count for each slot cannot exceed its BOM quantity. BOM and ownership
 cycles are rejected.
-
-An item is *ready* when it is `complete` or its SKU has no BOM. A `complete` item must
-have every non-optional slot filled to its quantity, and every installed child must be
-ready (so completeness is recursive). Draft items may be partly assembled. The database
-checks this at commit (`003_assembly_completeness.sql`). When a change would break a
-complete item — removing a component, installing a draft child, adding a required slot,
-or raising a quantity — the API sets it back to `draft` in the same transaction,
-cascading up through its parents. Setting `complete` on an incomplete item is rejected.
-
-Public visibility is computed by the API, not stored. An item is *listed* (public stock)
-when it is not archived, not installed anywhere, and ready. An installed item is
-*viewable* when its top-level parent is listed. This is an interim decision that still
-needs to be agreed with the team.
 
 PostgreSQL enforces these rules for API and direct SQL writes. Structural mutations
 are serialized with a transaction advisory lock and must use READ COMMITTED isolation.
@@ -74,7 +70,7 @@ clean — use it after restoring a dump. Database dumps containing installation
 history must be restored by an authorized database owner with triggers disabled
 during restoration.
 
-Archiving an item requires removing its active parent and children first. Archiving a
+Archiving an installed item requires deleting its parent first. Archiving a
 Part requires archiving its items and removing references from active parent BOMs.
 Restore through the UI or PATCH with `{"archived_at": null}`. Archived records retain
 history. Tree queries limit response depth without limiting stored nesting.
@@ -121,21 +117,18 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/parts` | List/search/paginate and create SKU schemas |
 | `/parts/:id` | Read with BOM, edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
-| `/parts/:id/items` | POST `{count}` (1–1000) to add items in one transaction, each with a generated `RF-SN-` serial number and a copy of the part's metadata |
+| `/parts/:id/items` | POST `{count}` (1–1000) to build items in one transaction, each with a generated `RF-SN-` serial number, a copy of the part's metadata, and its BOM filled from stock |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
 | `/inventory` | List/search/filter/paginate and create physical items |
 | `/inventory/:id` | Read ownership/history, edit, archive, restore |
-| `/inventory/:id/components` | Install a child item in a BOM slot |
-| `/inventory/:id/components/:installationID` | Remove an installed child |
+| `/inventory/:id/components/:installationID/replace` | POST `{component_item_id}` to swap an installed component for an available item of the same SKU |
 | `/inventory/:id/tree` | Read a nested tree with bounded depth |
 | `/summary` | Active SKU/item and ownership counts |
 | `/metadata/schema` | GET the metadata JSON Schema |
 | `/metadata/validate` | POST metadata; returns it if it matches the schema, else 400 |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
-`part_id`, `available=true` (not installed anywhere) and `visibility=public` (listed
-items only). `GET /inventory/:id?visibility=public` returns 404 unless the item is
-viewable. PATCH distinguishes omitted fields from explicit null. Null clears nullable
+`part_id` and `available=true` (not installed anywhere; this is public stock). PATCH distinguishes omitted fields from explicit null. Null clears nullable
 fields; metadata must be an object that matches the metadata schema. Liveness is
 `/healthz`; database readiness is `/readyz`.
 

@@ -26,8 +26,7 @@ type API interface {
 	CreateItem(context.Context, *models.InventoryItem) error
 	CreateItems(context.Context, uuid.UUID, int) ([]models.InventoryItem, error)
 	CreateComponent(context.Context, uuid.UUID, *models.PartComponent) error
-	Install(context.Context, uuid.UUID, *models.ItemComponent) error
-	Remove(context.Context, uuid.UUID, uuid.UUID) error
+	Replace(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*models.ItemComponent, error)
 	DeleteComponent(context.Context, uuid.UUID, uuid.UUID) error
 	ArchivePart(context.Context, uuid.UUID) error
 	ArchiveItem(context.Context, uuid.UUID) error
@@ -35,7 +34,6 @@ type API interface {
 	UpdateItem(context.Context, uuid.UUID, map[string]any) (*models.InventoryItem, error)
 	UpdateComponent(context.Context, uuid.UUID, uuid.UUID, map[string]any) (*models.PartComponent, error)
 	Tree(context.Context, uuid.UUID, int) (*models.TreeNode, error)
-	ItemViewable(context.Context, uuid.UUID) (bool, error)
 }
 type Handler struct{ api API }
 
@@ -102,9 +100,6 @@ func filter(c *fiber.Ctx) (models.Filter, error) {
 		return f, apperrors.Invalid("Invalid available")
 	}
 	f.Available = raw == "true"
-	if f.Public, e = visibility(c); e != nil {
-		return f, e
-	}
 	if raw = c.Query("part_id"); raw != "" {
 		v, e := uuid.Parse(raw)
 		if e != nil {
@@ -115,17 +110,6 @@ func filter(c *fiber.Ctx) (models.Filter, error) {
 	return f, nil
 }
 
-// visibility reads ?visibility=public|all (default all); public limits results
-// to what the public inventory shows
-func visibility(c *fiber.Ctx) (bool, error) {
-	switch c.Query("visibility", "all") {
-	case "all":
-		return false, nil
-	case "public":
-		return true, nil
-	}
-	return false, apperrors.Invalid("visibility must be public or all")
-}
 func requireJSON(c *fiber.Ctx) error {
 	if strings.ToLower(strings.TrimSpace(strings.Split(c.Get("Content-Type"), ";")[0])) != "application/json" {
 		return &apperrors.Error{Status: 415, Code: "unsupported_media_type", Message: "Content-Type must be application/json"}
@@ -205,19 +189,6 @@ func (h *Handler) Item(c *fiber.Ctx) error {
 	if e != nil {
 		return e
 	}
-	public, e := visibility(c)
-	if e != nil {
-		return e
-	}
-	if public {
-		ok, e := h.api.ItemViewable(c.UserContext(), i)
-		if e != nil {
-			return e
-		}
-		if !ok {
-			return apperrors.NotFound()
-		}
-	}
 	v, e := h.api.Item(c.UserContext(), i)
 	if e != nil {
 		return e
@@ -270,7 +241,7 @@ func (h *Handler) CreatePart(c *fiber.Ctx) error {
 }
 func (h *Handler) CreateItem(c *fiber.Ctx) error {
 	v := new(models.InventoryItem)
-	if e := body(c, v, "part_id serial_number assembly_state location metadata"); e != nil {
+	if e := body(c, v, "part_id serial_number location metadata"); e != nil {
 		return e
 	}
 	if e := h.api.CreateItem(c.UserContext(), v); e != nil {
@@ -280,7 +251,7 @@ func (h *Handler) CreateItem(c *fiber.Ctx) error {
 }
 func (h *Handler) CreateComponent(c *fiber.Ctx) error {
 	v := new(models.PartComponent)
-	if e := body(c, v, "child_part_id slot required_quantity is_optional"); e != nil {
+	if e := body(c, v, "child_part_id slot required_quantity"); e != nil {
 		return e
 	}
 	i, e := id(c, "id")
@@ -292,19 +263,29 @@ func (h *Handler) CreateComponent(c *fiber.Ctx) error {
 	}
 	return c.Status(201).JSON(v)
 }
-func (h *Handler) Install(c *fiber.Ctx) error {
-	v := new(models.ItemComponent)
-	if e := body(c, v, "component_item_id part_component_id position"); e != nil {
-		return e
-	}
+func (h *Handler) Replace(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := h.api.Install(c.UserContext(), i, v); e != nil {
+	j, e := id(c, "installationID")
+	if e != nil {
 		return e
 	}
-	return c.Status(201).JSON(v)
+	v := new(struct {
+		ComponentItemID uuid.UUID `json:"component_item_id"`
+	})
+	if e := body(c, v, "component_item_id"); e != nil {
+		return e
+	}
+	if v.ComponentItemID == uuid.Nil {
+		return apperrors.Invalid("component_item_id is required")
+	}
+	installation, e := h.api.Replace(c.UserContext(), i, j, v.ComponentItemID)
+	if e != nil {
+		return e
+	}
+	return c.Status(201).JSON(installation)
 }
 func (h *Handler) PatchPart(c *fiber.Ctx) error {
 	i, e := id(c, "id")
@@ -394,20 +375,6 @@ func (h *Handler) DeleteComponent(c *fiber.Ctx) error {
 		return e
 	}
 	if e := h.api.DeleteComponent(c.UserContext(), i, j); e != nil {
-		return e
-	}
-	return c.SendStatus(204)
-}
-func (h *Handler) Remove(c *fiber.Ctx) error {
-	i, e := id(c, "id")
-	if e != nil {
-		return e
-	}
-	j, e := id(c, "installationID")
-	if e != nil {
-		return e
-	}
-	if e := h.api.Remove(c.UserContext(), i, j); e != nil {
 		return e
 	}
 	return c.SendStatus(204)

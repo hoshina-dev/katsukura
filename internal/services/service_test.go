@@ -20,17 +20,17 @@ func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
 	if _, ok := p["metadata"].(models.JSONMap); !ok {
 		t.Fatal("metadata not converted to database JSON")
 	}
-	b := map[string]any{"is_optional": false, "required_quantity": float64(1)}
-	if e := validatePatch(b, "is_optional required_quantity"); e != nil {
+	b := map[string]any{"required_quantity": float64(1)}
+	if e := validatePatch(b, "required_quantity"); e != nil {
 		t.Fatal(e)
 	}
-	if b["is_optional"] != false || b["required_quantity"] != 1 {
-		t.Fatal("zero values lost")
+	if b["required_quantity"] != 1 {
+		t.Fatal("quantity not converted")
 	}
 }
 func TestInvalidPatch(t *testing.T) {
-	for _, p := range []map[string]any{{"metadata": nil}, {"metadata": map[string]any{"image_url": "x"}}, {"metadata": map[string]any{"category": "x"}}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"assembly_state": "bad"}, {"name": "  "}} {
-		if e := validatePatch(p, "metadata archived_at required_quantity assembly_state name"); e == nil {
+	for _, p := range []map[string]any{{"metadata": nil}, {"metadata": map[string]any{"image_url": "x"}}, {"metadata": map[string]any{"category": "x"}}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"name": "  "}} {
+		if e := validatePatch(p, "metadata archived_at required_quantity name"); e == nil {
 			t.Fatalf("accepted invalid patch %v", p)
 		}
 	}

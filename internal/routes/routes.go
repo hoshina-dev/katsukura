@@ -42,8 +42,7 @@ func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
 	i.Patch("/:id", h.PatchItem)
 	i.Delete("/:id", h.ArchiveItem)
 	i.Get("/:id/tree", h.Tree)
-	i.Post("/:id/components", h.Install)
-	i.Delete("/:id/components/:installationID", h.Remove)
+	i.Post("/:id/components/:installationID/replace", h.Replace)
 	app.Use(func(c *fiber.Ctx) error { return fiber.ErrNotFound })
 	return app
 }
