@@ -105,8 +105,10 @@ type Filter struct {
 	IncludeArchived bool
 	// Available: not installed in any item
 	Available bool
-	Limit     int
-	Offset    int
+	// Sort orders parts: newest (default), name, items, available_items
+	Sort   string
+	Limit  int
+	Offset int
 }
 type Page[T any] struct {
 	Data   []T   `json:"data"`

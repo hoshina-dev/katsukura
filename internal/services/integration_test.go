@@ -422,3 +422,71 @@ func TestGeneratedSKUAndItemBatch(t *testing.T) {
 		t.Fatal("serial numbers repeated")
 	}
 }
+
+func TestPartSortOrders(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	admin, e := database.Connect(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	adminPool, _ := admin.DB()
+	defer adminPool.Close()
+	schema := "sort_" + uuid.New().String()[:8]
+	if e = admin.Exec("CREATE SCHEMA " + schema).Error; e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
+	u, e := url.Parse(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+	db, e := database.Connect(u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	pool, _ := db.DB()
+	defer pool.Close()
+	if e = database.Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	s := services.New(repositories.New(db))
+	parts := map[string]*models.Part{}
+	for _, name := range []string{"bolt", "Axle", "cable"} {
+		parts[name] = &models.Part{Name: name}
+		if e = s.CreatePart(ctx, parts[name]); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// cable has 3 items, all installed in an Axle; bolt has 2 loose items
+	if e = s.CreateComponent(ctx, parts["Axle"].ID, &models.PartComponent{ChildPartID: parts["cable"].ID, Slot: "cable", RequiredQuantity: 3}); e != nil {
+		t.Fatal(e)
+	}
+	for _, stock := range []struct {
+		name  string
+		count int
+	}{{"cable", 3}, {"bolt", 2}, {"Axle", 1}} {
+		if _, e = s.CreateItems(ctx, parts[stock.name].ID, stock.count); e != nil {
+			t.Fatal(e)
+		}
+	}
+	for sort, want := range map[string]string{"name": "Axle bolt cable", "items": "cable bolt Axle", "available_items": "bolt Axle cable", "": "cable Axle bolt"} {
+		page, e := s.Parts(ctx, models.Filter{Sort: sort, Limit: 10})
+		if e != nil {
+			t.Fatal(e)
+		}
+		names := make([]string, len(page.Data))
+		for i, p := range page.Data {
+			names[i] = p.Name
+		}
+		if got := strings.Join(names, " "); got != want {
+			t.Errorf("sort %q: got %q, want %q", sort, got, want)
+		}
+	}
+}

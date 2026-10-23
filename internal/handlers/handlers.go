@@ -100,6 +100,11 @@ func filter(c *fiber.Ctx) (models.Filter, error) {
 		return f, apperrors.Invalid("Invalid available")
 	}
 	f.Available = raw == "true"
+	switch f.Sort = c.Query("sort"); f.Sort {
+	case "", "newest", "name", "items", "available_items":
+	default:
+		return f, apperrors.Invalid("sort must be newest, name, items or available_items")
+	}
 	if raw = c.Query("part_id"); raw != "" {
 		v, e := uuid.Parse(raw)
 		if e != nil {

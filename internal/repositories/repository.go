@@ -97,9 +97,21 @@ func (r *Repository) Parts(ctx context.Context, f models.Filter) (models.Page[mo
 	if e := q.Count(&v.Total).Error; e != nil {
 		return v, e
 	}
-	e := q.Order("created_at DESC, id DESC").Limit(f.Limit).Offset(f.Offset).Find(&v.Data).Error
+	e := q.Order(partOrder[f.Sort]).Limit(f.Limit).Offset(f.Offset).Find(&v.Data).Error
 	return v, e
 }
+
+const itemCount = "(SELECT count(*) FROM inventory_items i WHERE i.part_id = parts.id AND i.archived_at IS NULL"
+
+// partOrder maps Filter.Sort to ORDER BY; ties fall back to name so pages are stable
+var partOrder = map[string]string{
+	"":                "created_at DESC, id DESC",
+	"newest":          "created_at DESC, id DESC",
+	"name":            "lower(name), id",
+	"items":           itemCount + ") DESC, lower(name), id",
+	"available_items": itemCount + " AND NOT EXISTS (SELECT 1 FROM item_components c WHERE c.component_item_id = i.id AND c.removed_at IS NULL)) DESC, lower(name), id",
+}
+
 func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[models.InventoryItem], error) {
 	v := models.Page[models.InventoryItem]{Data: []models.InventoryItem{}, Limit: f.Limit, Offset: f.Offset}
 	q := r.db.WithContext(ctx).Model(&models.InventoryItem{})

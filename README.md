@@ -96,15 +96,19 @@ to `required`. The UI reads the keys from `GET /metadata/schema`, so adding a fi
 needs no frontend change. The database only checks that metadata is an object, so
 direct SQL writes must follow the schema themselves.
 
-Mock data lives in `sql_mock/` and is applied by hand, in order:
+Mock data sets live in `sql_mock/` and are applied by hand to a migrated database. Each
+file is one transaction and can be re-run safely.
 
 ```sh
-psql "$DATA_SOURCE_NAME" -f sql_mock/900_schematics_inventory.sql
-psql "$DATA_SOURCE_NAME" -f sql_mock/901_metadata_schema.sql
-```
+# RF lab parts: 67 SKUs, 1210 items, no BOMs
+psql "$DATA_SOURCE_NAME" -f sql_mock/900_rf_parts.sql
+# RF composites built from those parts (needs 900 first)
+psql "$DATA_SOURCE_NAME" -f sql_mock/901_rf_composites.sql
 
-`901` converts older mock metadata (`image_url`, free-form keys) to the schema and can be
-re-run safely.
+# IKEA-style assemblies; 901 converts their older metadata to the schema
+psql "$DATA_SOURCE_NAME" -f sql_mock/ikea/900_schematics_inventory.sql
+psql "$DATA_SOURCE_NAME" -f sql_mock/ikea/901_metadata_schema.sql
+```
 
 ## API
 
@@ -128,7 +132,9 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/metadata/validate` | POST metadata; returns it if it matches the schema, else 400 |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
-`part_id` and `available=true` (not installed anywhere; this is public stock). PATCH distinguishes omitted fields from explicit null. Null clears nullable
+`part_id` and `available=true` (not installed anywhere; this is public stock). Parts
+also accept `sort`: `newest` (default), `name`, `items` (most items first) or
+`available_items` (most items not installed anywhere first). PATCH distinguishes omitted fields from explicit null. Null clears nullable
 fields; metadata must be an object that matches the metadata schema. Liveness is
 `/healthz`; database readiness is `/readyz`.
 
