@@ -90,7 +90,7 @@ export function InventoryInstances({
   const actions = editable && (
     <>
       <NumberInput
-        aria-label="Quantity"
+        aria-label="Number of items to add"
         value={quantity}
         onChange={setQuantity}
         min={1}
@@ -173,7 +173,14 @@ export function InventoryInstances({
                     <TableTd>{assemblyLabel(item.assembly_state)}</TableTd>
                     <TableTd>{item.location ?? "—"}</TableTd>
                     <TableTd ta="right">
-                      <Link href={itemHref(sku, item.id)} style={linkStyle}>
+                      <Link
+                        href={itemHref(
+                          sku,
+                          item.id,
+                          editable ? "/backoffice" : "/inventory",
+                        )}
+                        style={linkStyle}
+                      >
                         <Text size="sm" component="span">
                           View
                         </Text>

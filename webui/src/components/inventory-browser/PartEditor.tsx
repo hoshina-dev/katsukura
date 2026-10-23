@@ -4,35 +4,16 @@ import { Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { savePart, type SubmitResult } from "@/app/backoffice/actions";
+import { savePart } from "@/app/backoffice/actions";
 import type { Metadata } from "@/libs/inventory";
 
+import { errorLines, MetadataInput, parseMetadata } from "./Metadata";
 import { Section } from "./Section";
 
 interface PartEditorProps {
   partId: string;
   description: string | null;
   metadata: Metadata;
-}
-
-// One line per problem, e.g. "category: got string, want null or array"
-function errorLines(result: SubmitResult) {
-  const lines = Object.entries(result.fields ?? {}).map(([key, reason]) =>
-    key ? `${key}: ${reason}` : reason,
-  );
-  return result.error ? [result.error, ...lines] : lines;
-}
-
-function parseMetadata(text: string) {
-  try {
-    const value: unknown = JSON.parse(text);
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      return { metadata: value as Record<string, unknown> };
-    }
-    return { error: "metadata must be a JSON object" };
-  } catch (error) {
-    return { error: `invalid JSON: ${(error as Error).message}` };
-  }
 }
 
 // Save validates on the backend; schema errors are listed under the metadata
@@ -79,27 +60,14 @@ export function PartEditor({ partId, description, metadata }: PartEditorProps) {
             autosize
             minRows={2}
           />
-          <div>
-            <Textarea
-              label="Metadata"
-              value={text}
-              onChange={(event) => {
-                setText(event.currentTarget.value);
-                setSaved(false);
-              }}
-              autosize
-              minRows={6}
-              styles={{
-                input: { fontFamily: "var(--mantine-font-family-monospace)" },
-              }}
-            />
-            {errors.map((line) => (
-              <Text key={line} size="xs" c="red" mt={4}>
-                *{line}
-              </Text>
-            ))}
-          </div>
-
+          <MetadataInput
+            value={text}
+            onChange={(value) => {
+              setText(value);
+              setSaved(false);
+            }}
+            errors={errors}
+          />
           <Group justify="flex-end">
             {saved && (
               <Text size="sm" c="green.7">

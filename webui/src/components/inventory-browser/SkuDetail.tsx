@@ -42,7 +42,11 @@ export async function SkuDetail({ sku, params, editable }: SkuDetailProps) {
   const images = imageUrls(part.metadata);
   const page = pageParam(params, ITEMS_PAGE_PARAM);
   const [items, bom] = await Promise.all([
-    listItems(part.id, ITEMS_PAGE_SIZE, (page - 1) * ITEMS_PAGE_SIZE),
+    listItems(part.id, {
+      limit: ITEMS_PAGE_SIZE,
+      offset: (page - 1) * ITEMS_PAGE_SIZE,
+      publicOnly: !editable,
+    }),
     isProduct ? getBomTree(part) : Promise.resolve([]),
   ]);
 
@@ -111,7 +115,7 @@ export async function SkuDetail({ sku, params, editable }: SkuDetailProps) {
 
       <BomSection
         partId={part.id}
-        componentIds={part.components.map((component) => component.id)}
+        components={part.components}
         editable={editable}
       >
         <BomTree nodes={bom} base={base} />

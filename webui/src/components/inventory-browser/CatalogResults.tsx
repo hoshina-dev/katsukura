@@ -79,7 +79,7 @@ export async function CatalogResults({
   view: CatalogView;
   base: string;
 }) {
-  const { entries, total } = await getCatalog(query);
+  const { entries, total } = await getCatalog(query, base === "/inventory");
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
 
   if (entries.length === 0) {

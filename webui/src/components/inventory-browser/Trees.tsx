@@ -63,9 +63,11 @@ export function BomTree({
 export function InstalledTree({
   nodes,
   depth = 0,
+  base,
 }: {
   nodes: TreeNode[];
   depth?: number;
+  base?: string;
 }) {
   return nodes.map(({ item, children, truncated }) => (
     <TreeRow
@@ -75,7 +77,7 @@ export function InstalledTree({
       label={
         <>
           <Link
-            href={itemHref(item.part?.sku ?? "unknown", item.id)}
+            href={itemHref(item.part?.sku ?? "unknown", item.id, base)}
             style={linkStyle}
           >
             <Text size="sm" fw={500} component="span" truncate>
@@ -93,7 +95,7 @@ export function InstalledTree({
       }
       nested={
         children.length > 0 && (
-          <InstalledTree nodes={children} depth={depth + 1} />
+          <InstalledTree nodes={children} depth={depth + 1} base={base} />
         )
       }
     />

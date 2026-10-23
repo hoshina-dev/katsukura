@@ -6,13 +6,21 @@ import { redirect } from "next/navigation";
 import { type Metadata, skuHref } from "@/libs/inventory";
 import {
   archiveItem,
+  createComponent,
   createItems,
   createPart,
   deleteComponent,
-  itemsTag,
+  installItem,
+  listItems,
+  type NewComponent,
+  ITEMS_TAG,
   type NewPart,
   PapiError,
   partTag,
+  removeInstallation,
+  searchParts,
+  updateComponent,
+  updateItem,
   updatePart,
   validateMetadata,
 } from "@/libs/papiRest";
@@ -101,13 +109,13 @@ export async function addItems(partId: string, count: number) {
   } catch (error) {
     return toResult(error);
   }
-  updateTag(itemsTag(partId));
+  updateTag(ITEMS_TAG);
   return {};
 }
 
 export async function deleteItems(partId: string, itemIds: string[]) {
   const result = await inBatches(itemIds, archiveItem, "deleted");
-  updateTag(itemsTag(partId));
+  updateTag(ITEMS_TAG);
   return result;
 }
 
@@ -118,5 +126,100 @@ export async function removeBom(partId: string, componentIds: string[]) {
     "removed",
   );
   updateTag(partTag(partId));
+  updateTag(ITEMS_TAG);
   return result;
+}
+
+export async function saveItem(
+  itemId: string,
+  patch: {
+    location: string | null;
+    assembly_state: "draft" | "complete";
+    metadata: Record<string, unknown>;
+  },
+): Promise<SubmitResult> {
+  try {
+    await updateItem(itemId, patch);
+  } catch (error) {
+    return toResult(error);
+  }
+  updateTag(ITEMS_TAG);
+  return {};
+}
+
+// Items of a SKU that are not installed anywhere, for the install picker
+export async function findAvailableItems(partId: string, search: string) {
+  const list = await listItems(partId, {
+    available: true,
+    search: search.trim() || undefined,
+    limit: 50,
+  });
+  return { items: list.data, total: list.total };
+}
+
+// The API rejects items that were installed elsewhere in the meantime
+export async function installItems(
+  parentItemId: string,
+  partComponentId: string,
+  itemIds: string[],
+) {
+  const result = await inBatches(
+    itemIds,
+    (id) => installItem(parentItemId, partComponentId, id),
+    "installed",
+  );
+  updateTag(ITEMS_TAG);
+  return result;
+}
+
+export async function uninstallItem(
+  parentItemId: string,
+  installationId: string,
+): Promise<SubmitResult> {
+  try {
+    await removeInstallation(parentItemId, installationId);
+  } catch (error) {
+    return toResult(error);
+  }
+  updateTag(ITEMS_TAG);
+  return {};
+}
+
+export async function findParts(search: string) {
+  const list = await searchParts(search.trim());
+  return list.data.map(({ id, sku, name }) => ({ id, sku, name }));
+}
+
+// BOM changes can demote existing items, so stock counts are expired too
+async function changeBom(partId: string, change: () => Promise<unknown>) {
+  try {
+    await change();
+  } catch (error) {
+    return toResult(error);
+  }
+  updateTag(partTag(partId));
+  updateTag(ITEMS_TAG);
+  return {};
+}
+
+export async function addBomChild(
+  partId: string,
+  component: NewComponent,
+): Promise<SubmitResult> {
+  return changeBom(partId, () => createComponent(partId, component));
+}
+
+export async function updateBomChild(
+  partId: string,
+  componentId: string,
+  patch: { required_quantity: number; is_optional: boolean },
+): Promise<SubmitResult> {
+  return changeBom(partId, () => updateComponent(partId, componentId, patch));
+}
+
+export async function deleteBomChild(
+  partId: string,
+  componentId: string,
+): Promise<SubmitResult> {
+  return changeBom(partId, () => deleteComponent(partId, componentId));
 }

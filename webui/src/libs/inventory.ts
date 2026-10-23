@@ -139,12 +139,21 @@ export function skuHref(sku: string, base = "/inventory") {
   return `${base}/${encodeURIComponent(sku)}`;
 }
 
-export function itemHref(sku: string, itemId: string) {
-  return `${skuHref(sku)}/items/${itemId}`;
+export function itemHref(sku: string, itemId: string, base = "/inventory") {
+  return `${skuHref(sku, base)}/items/${itemId}`;
 }
 
 export function unitsLabel(count: number) {
   return `${count} ${count === 1 ? "unit" : "units"}`;
+}
+
+// Default slot name for a new BOM row, e.g. "Door Handle" -> "door_handle"
+export function slotName(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 export function assemblyLabel(state: Item["assembly_state"]) {
