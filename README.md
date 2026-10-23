@@ -29,7 +29,8 @@ The UI reads `PAPI_URL` (default `http://localhost:8082`) on the server side.
 
 ## Data rules
 
-- `parts`: one schema per unique SKU, with JSONB object metadata.
+- `parts`: one schema per unique SKU, with JSONB object metadata. When `sku` is
+  omitted on create, the API generates `RF-` plus 8 random hex digits.
 - `part_components`: parent SKU, child SKU, named slot, and quantity upper limit.
 - `inventory_items`: one physical unit, nullable serial number, string location,
   and JSONB object metadata. Non-null serial numbers are unique within a SKU.
@@ -83,10 +84,10 @@ embedded in the binary and checked on every create and PATCH. Unknown keys are r
 | `image_urls` | list of strings or null; shown as a carousel in the UI |
 
 All fields are optional and nullable; a null, missing, or empty value is simply not
-shown. To make a field nullable add `"null"` to its `type`; to make
-it mandatory add it to `required`. Keep `webui/src/libs/inventory.ts` (`Metadata`) in
-sync. The database only checks that metadata is an object, so direct SQL writes must
-follow the schema themselves.
+shown. To make a field nullable add `"null"` to its `type`; to make it mandatory add it
+to `required`. The UI reads the keys from `GET /metadata/schema`, so adding a field
+needs no frontend change. The database only checks that metadata is an object, so
+direct SQL writes must follow the schema themselves.
 
 Mock data lives in `sql_mock/` and is applied by hand, in order:
 
@@ -101,13 +102,15 @@ re-run safely.
 ## API
 
 All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
-`{data, total, limit, offset}`; errors return `{error: {code, message}}`.
+`{data, total, limit, offset}`; errors return `{error: {code, message, details?}}`, where `details` lists
+`{field, message}` per invalid field (for example each bad metadata key).
 
 | Resource | Operations |
 |---|---|
 | `/parts` | List/search/paginate and create SKU schemas |
 | `/parts/:id` | Read with BOM, edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
+| `/parts/:id/items` | POST `{count}` (1–1000) to add items in one transaction, each with a generated `RF-SN-` serial number and a copy of the part's metadata |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
 | `/inventory` | List/search/filter/paginate and create physical items |
 | `/inventory/:id` | Read ownership/history, edit, archive, restore |
@@ -115,6 +118,7 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/inventory/:id/components/:installationID` | Remove an installed child |
 | `/inventory/:id/tree` | Read a nested tree with bounded depth |
 | `/summary` | Active SKU/item and ownership counts |
+| `/metadata/schema` | GET the metadata JSON Schema |
 | `/metadata/validate` | POST metadata; returns it if it matches the schema, else 400 |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/papi2/internal/models"
+	"regexp"
 	"testing"
 )
 
@@ -81,5 +82,17 @@ func TestPartParentQueryErrorAndEmptyContract(t *testing.T) {
 	part, e = New(store).Part(context.Background(), uuid.New())
 	if e != store.parentError || part != nil {
 		t.Fatalf("parent query error lost: %+v %v", part, e)
+	}
+}
+
+func TestGeneratedIdentifiers(t *testing.T) {
+	sku, serial := regexp.MustCompile(`^RF-[0-9A-F]{8}$`), regexp.MustCompile(`^RF-SN-\d{12}$`)
+	for i := 0; i < 100; i++ {
+		if s := newSKU(); !sku.MatchString(s) {
+			t.Fatalf("SKU %q", s)
+		}
+		if s := newSerialNumber(); !serial.MatchString(s) {
+			t.Fatalf("serial %q", s)
+		}
 	}
 }

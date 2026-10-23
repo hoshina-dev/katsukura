@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -360,5 +361,75 @@ func TestPartParentUsages(t *testing.T) {
 	}
 	if res.StatusCode != 200 || len(response.Parents) != 3 || response.Parents[0].ParentPart == nil || response.Parents[0].ParentPart.ArchivedAt == nil {
 		t.Fatalf("HTTP parent usages missing: status%d %+v", res.StatusCode, response.Parents)
+	}
+}
+
+func TestGeneratedSKUAndItemBatch(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	admin, e := database.Connect(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	adminPool, _ := admin.DB()
+	defer adminPool.Close()
+	schema := "batch_" + uuid.New().String()[:8]
+	if e = admin.Exec("CREATE SCHEMA " + schema).Error; e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
+	u, e := url.Parse(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+	db, e := database.Connect(u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	pool, _ := db.DB()
+	defer pool.Close()
+	if e = database.Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	s := services.New(repositories.New(db))
+
+	part := &models.Part{Name: "Generated", Metadata: models.JSONMap{"notes": "inherited"}}
+	if e = s.CreatePart(ctx, part); e != nil {
+		t.Fatal(e)
+	}
+	if !regexp.MustCompile(`^RF-[0-9A-F]{8}$`).MatchString(part.SKU) {
+		t.Fatalf("generated SKU %q", part.SKU)
+	}
+	for _, count := range []int{0, services.MaxNewItems + 1} {
+		if _, e = s.CreateItems(ctx, part.ID, count); e == nil {
+			t.Fatalf("count %d accepted", count)
+		}
+	}
+	if _, e = s.CreateItems(ctx, uuid.New(), 1); e == nil {
+		t.Fatal("items created for a missing part")
+	}
+	items, e := s.CreateItems(ctx, part.ID, 3)
+	if e != nil || len(items) != 3 {
+		t.Fatalf("batch: %v %d", e, len(items))
+	}
+	page, e := s.Items(ctx, models.Filter{PartID: &part.ID, Limit: 10})
+	if e != nil || page.Total != 3 {
+		t.Fatalf("stored items: %v %d", e, page.Total)
+	}
+	serials := map[string]bool{}
+	for _, item := range page.Data {
+		if item.SerialNumber == nil || !regexp.MustCompile(`^RF-SN-\d{12}$`).MatchString(*item.SerialNumber) || item.Metadata["notes"] != "inherited" {
+			t.Fatalf("item not generated from part: %+v", item)
+		}
+		serials[*item.SerialNumber] = true
+	}
+	if len(serials) != 3 {
+		t.Fatal("serial numbers repeated")
 	}
 }

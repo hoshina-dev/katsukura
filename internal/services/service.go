@@ -3,12 +3,16 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/papi2/internal/apperrors"
 	"github.com/hoshina-dev/papi2/internal/models"
 	"github.com/hoshina-dev/papi2/schema"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -74,11 +78,31 @@ func (s *Service) readItem(ctx context.Context, id uuid.UUID) (*models.ItemDetai
 	h, e := s.repo.Installations(ctx, id, false)
 	return &models.ItemDetail{InventoryItem: *i, Parent: p, Components: c, History: h}, e
 }
+
+// MaxNewItems caps how many items one CreateItems call may add.
+const MaxNewItems = 1000
+
+// newSKU returns "RF-" plus 8 random hex digits, used when a part has no SKU.
+func newSKU() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return "RF-" + strings.ToUpper(hex.EncodeToString(b))
+}
+
+// newSerialNumber returns "RF-SN-" plus 12 random digits.
+func newSerialNumber() string {
+	n, _ := rand.Int(rand.Reader, big.NewInt(9e11))
+	return fmt.Sprintf("RF-SN-%d", n.Int64()+1e11)
+}
+
 func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
-	if strings.TrimSpace(p.SKU) == "" || strings.TrimSpace(p.Name) == "" {
-		return apperrors.Invalid("sku and name are required")
+	if strings.TrimSpace(p.Name) == "" {
+		return apperrors.Invalid("name is required")
 	}
 	p.SKU = strings.TrimSpace(p.SKU)
+	if p.SKU == "" {
+		p.SKU = newSKU()
+	}
 	p.Name = strings.TrimSpace(p.Name)
 	p.Description = trimNullable(p.Description)
 	p.ID = uuid.New()
@@ -117,6 +141,33 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 		}
 		return r.Create(ctx, i)
 	})
+}
+
+// CreateItems adds count items of one part in a single transaction. Each item
+// gets a generated serial number and a copy of the part's metadata.
+func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int) ([]models.InventoryItem, error) {
+	if count < 1 || count > MaxNewItems {
+		return nil, apperrors.Invalid(fmt.Sprintf("count must be between 1 and %d", MaxNewItems))
+	}
+	items := make([]models.InventoryItem, count)
+	e := s.write(ctx, func(r Store) error {
+		p, e := r.GetPart(ctx, partID)
+		if e != nil {
+			return e
+		}
+		for i := range items {
+			serial := newSerialNumber()
+			items[i] = models.InventoryItem{ID: uuid.New(), PartID: partID, SerialNumber: &serial, AssemblyState: "draft", Metadata: p.Metadata}
+			if e := r.Create(ctx, &items[i]); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	if e != nil {
+		return nil, e
+	}
+	return items, nil
 }
 func (s *Service) CreateComponent(ctx context.Context, parent uuid.UUID, c *models.PartComponent) error {
 	if c.ChildPartID == uuid.Nil || strings.TrimSpace(c.Slot) == "" || (c.RequiredQuantity < 1 || c.RequiredQuantity > 2147483647) {
@@ -366,12 +417,19 @@ func (s *Service) readTree(ctx context.Context, id uuid.UUID, depth int) (*model
 	return v, apperrors.Translate(e)
 }
 
-// ValidateMetadata checks metadata against schema/metadata.schema.json.
+// ValidateMetadata checks metadata against schema/metadata.schema.json and
+// reports each invalid key in the error details.
 func ValidateMetadata(m map[string]any) error {
-	if e := schema.ValidateMetadata(m); e != nil {
-		return apperrors.Invalid(e.Error())
+	e := schema.ValidateMetadata(m)
+	var se *schema.Error
+	if !errors.As(e, &se) {
+		return e
 	}
-	return nil
+	details := make([]apperrors.Detail, len(se.Fields))
+	for i, f := range se.Fields {
+		details[i] = apperrors.Detail{Field: f.Field, Message: f.Message}
+	}
+	return &apperrors.Error{Status: 400, Code: "invalid_request", Message: se.Error(), Details: details}
 }
 func DecodeObject(body []byte, target any) error {
 	var p map[string]json.RawMessage

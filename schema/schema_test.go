@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -31,18 +32,26 @@ func TestValidMetadata(t *testing.T) {
 	}
 }
 
-func TestInvalidMetadata(t *testing.T) {
-	for s, want := range map[string]string{
-		`{"image_url":"https://x"}`:  "image_url",
-		`{"category":"furniture"}`:   "/category",
-		`{"category":[1]}`:           "/category/0",
-		`{"image_urls":[null]}`:      "/image_urls/0",
-		`{"manufacturer":3}`:         "/manufacturer",
-		`{"temperature_stage":"20"}`: "/temperature_stage",
+func TestInvalidMetadataFields(t *testing.T) {
+	for s, want := range map[string]FieldError{
+		`{"image_url":"https://x"}`:  {"image_url", "not in schema"},
+		`{"category":"furniture"}`:   {"category", "got string, want null or array"},
+		`{"category":[1]}`:           {"category", "item 0: got number, want string"},
+		`{"image_urls":[null]}`:      {"image_urls", "item 0: got null, want string"},
+		`{"manufacturer":3}`:         {"manufacturer", "got number, want null or string"},
+		`{"temperature_stage":"20"}`: {"temperature_stage", "got string, want null or number"},
 	} {
-		err := ValidateMetadata(decode(t, s))
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%s: got %v, want mention of %q", s, err, want)
+		var e *Error
+		if err := ValidateMetadata(decode(t, s)); !errors.As(err, &e) || len(e.Fields) != 1 || e.Fields[0] != want {
+			t.Errorf("%s: got %v, want %+v", s, err, want)
 		}
+	}
+}
+
+func TestErrorListsEveryField(t *testing.T) {
+	err := ValidateMetadata(decode(t, `{"notes":1,"a":1,"b":2,"category":"x"}`))
+	want := "invalid metadata: a: not in schema; b: not in schema; category: got string, want null or array; notes: got number, want null or string"
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v", err)
 	}
 }

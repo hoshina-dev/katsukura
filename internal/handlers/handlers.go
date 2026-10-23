@@ -9,6 +9,7 @@ import (
 	"github.com/hoshina-dev/papi2/internal/apperrors"
 	"github.com/hoshina-dev/papi2/internal/models"
 	"github.com/hoshina-dev/papi2/internal/services"
+	"github.com/hoshina-dev/papi2/schema"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ type API interface {
 	Components(context.Context, uuid.UUID) ([]models.PartComponent, error)
 	CreatePart(context.Context, *models.Part) error
 	CreateItem(context.Context, *models.InventoryItem) error
+	CreateItems(context.Context, uuid.UUID, int) ([]models.InventoryItem, error)
 	CreateComponent(context.Context, uuid.UUID, *models.PartComponent) error
 	Install(context.Context, uuid.UUID, *models.ItemComponent) error
 	Remove(context.Context, uuid.UUID, uuid.UUID) error
@@ -41,10 +43,11 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	err = apperrors.Translate(err)
 	status := 500
 	code, message := "internal_error", "Internal server error"
+	var details []apperrors.Detail
 	var e *apperrors.Error
 	var f *fiber.Error
 	if errors.As(err, &e) {
-		status, code, message = e.Status, e.Code, e.Message
+		status, code, message, details = e.Status, e.Code, e.Message, e.Details
 	} else if errors.As(err, &f) {
 		status = f.Code
 		code = "http_error"
@@ -53,7 +56,11 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	if status >= 500 {
 		slog.Error("HTTP request failed", "method", c.Method(), "path", c.Path(), "error", err)
 	}
-	return c.Status(status).JSON(fiber.Map{"error": fiber.Map{"code": code, "message": message}})
+	body := fiber.Map{"code": code, "message": message}
+	if len(details) > 0 {
+		body["details"] = details
+	}
+	return c.Status(status).JSON(fiber.Map{"error": body})
 }
 func id(c *fiber.Ctx, key string) (uuid.UUID, error) {
 	v, e := uuid.Parse(c.Params(key))
@@ -182,6 +189,27 @@ func (h *Handler) Item(c *fiber.Ctx) error {
 		return e
 	}
 	return c.JSON(v)
+}
+func (h *Handler) MetadataSchema(c *fiber.Ctx) error {
+	c.Type("json")
+	return c.Send(schema.MetadataJSON)
+}
+func (h *Handler) CreateItems(c *fiber.Ctx) error {
+	partID, e := id(c, "id")
+	if e != nil {
+		return e
+	}
+	v := new(struct {
+		Count int `json:"count"`
+	})
+	if e := body(c, v, "count"); e != nil {
+		return e
+	}
+	items, e := h.api.CreateItems(c.UserContext(), partID, v.Count)
+	if e != nil {
+		return e
+	}
+	return c.Status(201).JSON(fiber.Map{"data": items})
 }
 func (h *Handler) ValidateMetadata(c *fiber.Ctx) error {
 	if e := requireJSON(c); e != nil {

@@ -2,6 +2,8 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -50,5 +52,36 @@ func TestRejectsCrossSiteJSONBody(t *testing.T) {
 		if res.StatusCode != 415 {
 			t.Fatalf("%s accepted incompatible Content-Type: %d", method, res.StatusCode)
 		}
+	}
+}
+
+func TestMetadataEndpoints(t *testing.T) {
+	app := NewApp(nil, nil)
+	res, e := app.Test(httptest.NewRequest("GET", "/api/v1/metadata/schema", nil))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var schema struct {
+		Properties map[string]any `json:"properties"`
+	}
+	if e = json.NewDecoder(res.Body).Decode(&schema); e != nil || res.StatusCode != 200 || schema.Properties["image_urls"] == nil {
+		t.Fatalf("schema: %d %v %v", res.StatusCode, e, schema)
+	}
+	req := httptest.NewRequest("POST", "/api/v1/metadata/validate", strings.NewReader(`{"category":"x","colour":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	if res, e = app.Test(req); e != nil {
+		t.Fatal(e)
+	}
+	var body struct {
+		Error struct {
+			Details []struct{ Field, Message string } `json:"details"`
+		} `json:"error"`
+	}
+	if e = json.NewDecoder(res.Body).Decode(&body); e != nil || res.StatusCode != 400 {
+		t.Fatalf("validate: %d %v", res.StatusCode, e)
+	}
+	got := fmt.Sprint(body.Error.Details)
+	if got != "[{category got string, want null or array} {colour not in schema}]" {
+		t.Fatalf("details: %s", got)
 	}
 }
