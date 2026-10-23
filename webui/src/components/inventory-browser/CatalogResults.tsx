@@ -13,6 +13,7 @@ import { Suspense } from "react";
 
 import {
   CATALOG_PAGE_SIZE,
+  LIST_PAGE_SIZE,
   type CatalogEntry,
   type CatalogQuery,
   type CatalogView,
@@ -24,7 +25,8 @@ import {
 } from "@/libs/inventory";
 import { getCatalog } from "@/libs/papiRest";
 
-import { CatalogPager, CatalogToolbar } from "./CatalogControls";
+import { CatalogToolbar } from "./CatalogControls";
+import { Pager } from "./Pager";
 import { CatalogTable } from "./CatalogTable";
 import { PartImage } from "./PartImage";
 import { StockStatus, TypeLabel } from "./StockStatus";
@@ -79,7 +81,12 @@ export async function CatalogResults({
   view: CatalogView;
   base: string;
 }) {
-  const { entries, total } = await getCatalog(query, base === "/inventory");
+  const availableOnly = base === "/inventory";
+  // The list view scrolls from the start; the grid shows one page at a time
+  const { entries, total } =
+    view === "table"
+      ? await getCatalog({ ...query, page: 1 }, availableOnly, LIST_PAGE_SIZE)
+      : await getCatalog(query, availableOnly);
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
 
   if (entries.length === 0) {
@@ -97,18 +104,25 @@ export async function CatalogResults({
     );
   }
 
+  if (view === "table") {
+    return (
+      <CatalogTable
+        entries={entries}
+        total={total}
+        query={{ ...query, page: 1 }}
+        base={base}
+      />
+    );
+  }
+
   return (
     <Stack gap="lg">
-      {view === "table" ? (
-        <CatalogTable entries={entries} base={base} />
-      ) : (
-        <SimpleGrid cols={GRID_COLS} spacing="lg">
-          {entries.map((entry) => (
-            <CatalogCard key={entry.id} entry={entry} base={base} />
-          ))}
-        </SimpleGrid>
-      )}
-      <CatalogPager page={query.page} pageCount={pageCount} total={total} />
+      <SimpleGrid cols={GRID_COLS} spacing="lg">
+        {entries.map((entry) => (
+          <CatalogCard key={entry.id} entry={entry} base={base} />
+        ))}
+      </SimpleGrid>
+      <Pager page={query.page} pageCount={pageCount} total={total} />
     </Stack>
   );
 }

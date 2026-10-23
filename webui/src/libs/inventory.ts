@@ -76,17 +76,21 @@ export type BomNode = {
 // Catalog
 
 export const CATALOG_PAGE_SIZE = 6;
+// Rows fetched per step by the scrolling list view
+export const LIST_PAGE_SIZE = 25;
 export const ITEMS_PAGE_SIZE = 20;
 export const ITEMS_PAGE_PARAM = "items_page";
 
 export type CatalogType = "all" | "products" | "parts";
 export type CatalogStock = "all" | "in";
 export type CatalogView = "grid" | "table";
+export type CatalogSort = "default" | "name" | "amount";
 
 export type CatalogQuery = {
   search: string;
   type: CatalogType;
   stock: CatalogStock;
+  sort: CatalogSort;
   page: number;
 };
 
@@ -113,10 +117,12 @@ export function pageParam(params: SearchParams, key: string) {
 
 export function parseCatalogQuery(params: SearchParams): CatalogQuery {
   const type = param(params, "type");
+  const sort = param(params, "sort");
   return {
     search: param(params, "q").trim(),
     type: type === "products" || type === "parts" ? type : "all",
     stock: param(params, "stock") === "in" ? "in" : "all",
+    sort: sort === "name" || sort === "amount" ? sort : "default",
     page: pageParam(params, "page"),
   };
 }

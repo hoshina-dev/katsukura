@@ -9,10 +9,13 @@ import {
 
 describe("parseCatalogQuery", () => {
   it("falls back to defaults for missing or invalid params", () => {
-    expect(parseCatalogQuery({ type: "bogus", page: "-2" })).toEqual({
+    expect(
+      parseCatalogQuery({ type: "bogus", sort: "price", page: "-2" }),
+    ).toEqual({
       search: "",
       type: "all",
       stock: "all",
+      sort: "default",
       page: 1,
     });
   });
@@ -23,9 +26,16 @@ describe("parseCatalogQuery", () => {
         q: ["  bolt ", "nut"],
         type: "parts",
         stock: "in",
+        sort: "amount",
         page: "3",
       }),
-    ).toEqual({ search: "bolt", type: "parts", stock: "in", page: 3 });
+    ).toEqual({
+      search: "bolt",
+      type: "parts",
+      stock: "in",
+      sort: "amount",
+      page: 3,
+    });
   });
 });
 

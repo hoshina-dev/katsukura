@@ -1,53 +1,40 @@
 "use client";
 
 import {
+  Box,
   Button,
   Group,
+  Menu,
   SegmentedControl,
-  Text,
   TextInput,
   VisuallyHidden,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
+  IconArrowsSort,
+  IconCheck,
   IconLayoutGrid,
   IconList,
   IconPlus,
   IconSearch,
 } from "@tabler/icons-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-function useCatalogParams() {
-  const params = useSearchParams();
-  const pathname = usePathname();
-  const router = useRouter();
+import { useSearchParamUpdate } from "./Pager";
 
-  const update = useCallback(
-    (changes: Record<string, string | null>, resetPage = true) => {
-      const next = new URLSearchParams(params.toString());
-      for (const [key, value] of Object.entries(changes)) {
-        if (value) next.set(key, value);
-        else next.delete(key);
-      }
-      if (resetPage) next.delete("page");
-      const search = next.toString();
-      router.replace(search ? `${pathname}?${search}` : pathname, {
-        scroll: false,
-      });
-    },
-    [params, pathname, router],
-  );
-
-  return { params, update };
-}
+const SORTS = [
+  { value: "default", label: "Default" },
+  { value: "name", label: "Name (A–Z)" },
+  { value: "amount", label: "Amount (most first)" },
+];
 
 export function CatalogToolbar({ addHref }: { addHref?: string }) {
-  const { params, update } = useCatalogParams();
+  const { params, update } = useSearchParamUpdate();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [debounced] = useDebouncedValue(search, 300);
   const lastSearch = useRef(debounced);
+  const sort = params.get("sort") ?? "default";
 
   useEffect(() => {
     if (lastSearch.current === debounced) return;
@@ -111,6 +98,32 @@ export function CatalogToolbar({ addHref }: { addHref?: string }) {
           },
         ]}
       />
+      <Menu position="bottom-end" withinPortal>
+        <Menu.Target>
+          <Button variant="default" leftSection={<IconArrowsSort size={16} />}>
+            {sort === "default"
+              ? "Sort"
+              : SORTS.find((option) => option.value === sort)?.label}
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          {SORTS.map((option) => (
+            <Menu.Item
+              key={option.value}
+              leftSection={
+                option.value === sort ? <IconCheck size={14} /> : <Box w={14} />
+              }
+              onClick={() =>
+                update({
+                  sort: option.value === "default" ? null : option.value,
+                })
+              }
+            >
+              {option.label}
+            </Menu.Item>
+          ))}
+        </Menu.Dropdown>
+      </Menu>
       {addHref && (
         <Button
           component={Link}
@@ -120,52 +133,6 @@ export function CatalogToolbar({ addHref }: { addHref?: string }) {
           Add
         </Button>
       )}
-    </Group>
-  );
-}
-
-interface CatalogPagerProps {
-  page: number;
-  pageCount: number;
-  total: number;
-  // Search param holding the page number
-  param?: string;
-}
-
-export function CatalogPager({
-  page,
-  pageCount,
-  total,
-  param = "page",
-}: CatalogPagerProps) {
-  const { update } = useCatalogParams();
-  const goTo = (next: number) =>
-    update({ [param]: next > 1 ? String(next) : null }, false);
-
-  return (
-    <Group justify="space-between">
-      <Text size="sm" c="dimmed">
-        Page {page} of {pageCount} · {total}{" "}
-        {total === 1 ? "result" : "results"}
-      </Text>
-      <Group gap="xs">
-        <Button
-          variant="default"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => goTo(page - 1)}
-        >
-          Previous
-        </Button>
-        <Button
-          variant="default"
-          size="sm"
-          disabled={page >= pageCount}
-          onClick={() => goTo(page + 1)}
-        >
-          Next
-        </Button>
-      </Group>
     </Group>
   );
 }

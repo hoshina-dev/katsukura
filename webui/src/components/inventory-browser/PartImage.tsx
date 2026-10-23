@@ -2,7 +2,7 @@
 
 import { AspectRatio, Center, Image } from "@mantine/core";
 import { IconPhoto } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface PartImageProps {
   src: string | null;
@@ -13,11 +13,19 @@ interface PartImageProps {
 
 export function PartImage({ src, alt, ratio = 4 / 3, radius }: PartImageProps) {
   const [failed, setFailed] = useState(false);
+  const image = useRef<HTMLImageElement>(null);
+
+  // An image that failed before hydration never fires onError
+  useEffect(() => {
+    const img = image.current;
+    if (img?.complete && img.naturalWidth === 0) setFailed(true);
+  }, [src]);
 
   return (
     <AspectRatio ratio={ratio}>
       {src && !failed ? (
         <Image
+          ref={image}
           src={src}
           alt={alt}
           loading="lazy"

@@ -247,11 +247,11 @@ async function toEntry(
   };
 }
 
-async function allParts(search: string) {
+async function allParts(search: string, sort?: string) {
   const parts: Part[] = [];
   for (let offset = 0; ; offset += 100) {
     const list = await get<List<Part>>(
-      `/parts?${qs({ search, limit: 100, offset })}`,
+      `/parts?${qs({ search, sort, limit: 100, offset })}`,
     );
     parts.push(...list.data);
     if (list.data.length === 0 || parts.length >= list.total) return parts;
@@ -276,12 +276,25 @@ async function toEntries(
   return entries;
 }
 
-export async function getCatalog(query: CatalogQuery, availableOnly: boolean) {
-  const offset = (query.page - 1) * CATALOG_PAGE_SIZE;
+// The API sorts; "amount" counts the same items the page shows as stock
+function partSort(query: CatalogQuery, availableOnly: boolean) {
+  if (query.sort === "name") return "name";
+  if (query.sort === "amount")
+    return availableOnly ? "available_items" : "items";
+  return undefined;
+}
+
+export async function getCatalog(
+  query: CatalogQuery,
+  availableOnly: boolean,
+  pageSize = CATALOG_PAGE_SIZE,
+) {
+  const offset = (query.page - 1) * pageSize;
+  const sort = partSort(query, availableOnly);
 
   if (query.type === "all" && query.stock === "all") {
     const list = await get<List<Part>>(
-      `/parts?${qs({ search: query.search, limit: CATALOG_PAGE_SIZE, offset })}`,
+      `/parts?${qs({ search: query.search, sort, limit: pageSize, offset })}`,
     );
     return {
       entries: await Promise.all(
@@ -293,7 +306,7 @@ export async function getCatalog(query: CatalogQuery, availableOnly: boolean) {
 
   // PAPI cannot filter by product/part or stock yet, so filter the matching SKUs here
   const entries = (
-    await toEntries(await allParts(query.search), availableOnly)
+    await toEntries(await allParts(query.search, sort), availableOnly)
   ).filter(
     (entry) =>
       (query.type === "all" ||
@@ -301,7 +314,7 @@ export async function getCatalog(query: CatalogQuery, availableOnly: boolean) {
       (query.stock === "all" || entry.stockCount > 0),
   );
   return {
-    entries: entries.slice(offset, offset + CATALOG_PAGE_SIZE),
+    entries: entries.slice(offset, offset + pageSize),
     total: entries.length,
   };
 }

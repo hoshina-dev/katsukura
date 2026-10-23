@@ -29,7 +29,7 @@ import {
   unitsLabel,
 } from "@/libs/inventory";
 
-import { CatalogPager } from "./CatalogControls";
+import { Pager } from "./Pager";
 import { ConfirmModal } from "./ConfirmModal";
 import { EmptyNote, Section } from "./Section";
 
@@ -199,7 +199,7 @@ export function InventoryInstances({
           </Box>
         )}
         {total > ITEMS_PAGE_SIZE && (
-          <CatalogPager
+          <Pager
             page={page}
             pageCount={pageCount}
             total={total}
