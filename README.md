@@ -37,10 +37,21 @@ The UI reads `PAPI_URL` (default `http://localhost:8082`) on the server side.
 - `item_components`: installed child items and removal history. A child has only
   one active parent, and its SKU must match the selected BOM slot.
 
-Missing components are allowed, including for items marked `complete`. The installed
-count for each slot cannot exceed its BOM quantity. Assembly state is informational;
-`is_optional` does not add a minimum quantity requirement. BOM and ownership cycles
-are rejected.
+The installed count for each slot cannot exceed its BOM quantity. BOM and ownership
+cycles are rejected.
+
+An item is *ready* when it is `complete` or its SKU has no BOM. A `complete` item must
+have every non-optional slot filled to its quantity, and every installed child must be
+ready (so completeness is recursive). Draft items may be partly assembled. The database
+checks this at commit (`003_assembly_completeness.sql`). When a change would break a
+complete item — removing a component, installing a draft child, adding a required slot,
+or raising a quantity — the API sets it back to `draft` in the same transaction,
+cascading up through its parents. Setting `complete` on an incomplete item is rejected.
+
+Public visibility is computed by the API, not stored. An item is *listed* (public stock)
+when it is not archived, not installed anywhere, and ready. An installed item is
+*viewable* when its top-level parent is listed. This is an interim decision that still
+needs to be agreed with the team.
 
 PostgreSQL enforces these rules for API and direct SQL writes. Structural mutations
 are serialized with a transaction advisory lock and must use READ COMMITTED isolation.
@@ -122,7 +133,9 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/metadata/validate` | POST metadata; returns it if it matches the schema, else 400 |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
-`part_id`. PATCH distinguishes omitted fields from explicit null. Null clears nullable
+`part_id`, `available=true` (not installed anywhere) and `visibility=public` (listed
+items only). `GET /inventory/:id?visibility=public` returns 404 unless the item is
+viewable. PATCH distinguishes omitted fields from explicit null. Null clears nullable
 fields; metadata must be an object that matches the metadata schema. Liveness is
 `/healthz`; database readiness is `/readyz`.
 

@@ -109,6 +109,12 @@ func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[mo
 	if f.PartID != nil {
 		q = q.Where("inventory_items.part_id = ?", *f.PartID)
 	}
+	if f.Available {
+		q = q.Where("NOT EXISTS (SELECT 1 FROM item_components c WHERE c.component_item_id = inventory_items.id AND c.removed_at IS NULL)")
+	}
+	if f.Public {
+		q = q.Where("papi2_item_listed(inventory_items.id)")
+	}
 	if f.Search != "" {
 		q = q.Joins("JOIN parts ON parts.id = inventory_items.part_id").Where("inventory_items.serial_number ILIKE ? OR parts.sku ILIKE ? OR parts.name ILIKE ?", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%")
 	}
@@ -117,6 +123,18 @@ func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[mo
 	}
 	e := q.Preload("Part").Order("inventory_items.created_at DESC, inventory_items.id DESC").Limit(f.Limit).Offset(f.Offset).Find(&v.Data).Error
 	return v, e
+}
+func (r *Repository) DemoteIncomplete(ctx context.Context, except *uuid.UUID) error {
+	for {
+		res := r.db.WithContext(ctx).Exec(`UPDATE inventory_items SET assembly_state = 'draft' WHERE id IN (SELECT papi2_incomplete_assemblies(NULL)) AND id IS DISTINCT FROM ?`, except)
+		if res.Error != nil || res.RowsAffected == 0 {
+			return res.Error
+		}
+	}
+}
+func (r *Repository) ItemViewable(ctx context.Context, id uuid.UUID) (ok bool, e error) {
+	e = r.db.WithContext(ctx).Raw("SELECT papi2_item_viewable(?)", id).Scan(&ok).Error
+	return
 }
 func (r *Repository) Summary(ctx context.Context) (models.Summary, error) {
 	v := models.Summary{}

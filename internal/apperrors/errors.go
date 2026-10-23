@@ -47,7 +47,7 @@ func Translate(err error) error {
 		case "23503":
 			return &Error{Status: 409, Code: "referenced_resource", Message: "Referenced resource does not exist or is still in use"}
 		case "23514":
-			messages := map[string]string{"papi2_bom_cycle": "BOM would contain a cycle", "papi2_item_cycle": "Inventory would contain an ownership cycle", "papi2_slot_match": "Items must match the exact BOM SKUs", "papi2_quantity_cap": "BOM slot quantity would be exceeded", "papi2_active_archived": "Archived resources cannot be in active use", "papi2_part_archive_in_use": "An active BOM cannot reference an archived SKU", "papi2_sku_in_use": "SKU cannot change after use in inventory or a BOM", "papi2_immutable_history": "Installation history is immutable"}
+			messages := map[string]string{"papi2_bom_cycle": "BOM would contain a cycle", "papi2_item_cycle": "Inventory would contain an ownership cycle", "papi2_slot_match": "Items must match the exact BOM SKUs", "papi2_quantity_cap": "BOM slot quantity would be exceeded", "papi2_active_archived": "Archived resources cannot be in active use", "papi2_part_archive_in_use": "An active BOM cannot reference an archived SKU", "papi2_sku_in_use": "SKU cannot change after use in inventory or a BOM", "papi2_immutable_history": "Installation history is immutable", "papi2_assembly_complete": "A complete item needs every required slot filled with complete components"}
 			message := messages[p.ConstraintName]
 			if message == "" {
 				message = "Change violates inventory or BOM rules"

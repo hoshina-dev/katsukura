@@ -35,6 +35,7 @@ type API interface {
 	UpdateItem(context.Context, uuid.UUID, map[string]any) (*models.InventoryItem, error)
 	UpdateComponent(context.Context, uuid.UUID, uuid.UUID, map[string]any) (*models.PartComponent, error)
 	Tree(context.Context, uuid.UUID, int) (*models.TreeNode, error)
+	ItemViewable(context.Context, uuid.UUID) (bool, error)
 }
 type Handler struct{ api API }
 
@@ -96,6 +97,14 @@ func filter(c *fiber.Ctx) (models.Filter, error) {
 		return f, apperrors.Invalid("Invalid include_archived")
 	}
 	f.IncludeArchived = raw == "true"
+	raw = c.Query("available", "false")
+	if raw != "true" && raw != "false" {
+		return f, apperrors.Invalid("Invalid available")
+	}
+	f.Available = raw == "true"
+	if f.Public, e = visibility(c); e != nil {
+		return f, e
+	}
 	if raw = c.Query("part_id"); raw != "" {
 		v, e := uuid.Parse(raw)
 		if e != nil {
@@ -104,6 +113,18 @@ func filter(c *fiber.Ctx) (models.Filter, error) {
 		f.PartID = &v
 	}
 	return f, nil
+}
+
+// visibility reads ?visibility=public|all (default all); public limits results
+// to what the public inventory shows
+func visibility(c *fiber.Ctx) (bool, error) {
+	switch c.Query("visibility", "all") {
+	case "all":
+		return false, nil
+	case "public":
+		return true, nil
+	}
+	return false, apperrors.Invalid("visibility must be public or all")
 }
 func requireJSON(c *fiber.Ctx) error {
 	if strings.ToLower(strings.TrimSpace(strings.Split(c.Get("Content-Type"), ";")[0])) != "application/json" {
@@ -183,6 +204,19 @@ func (h *Handler) Item(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
+	}
+	public, e := visibility(c)
+	if e != nil {
+		return e
+	}
+	if public {
+		ok, e := h.api.ItemViewable(c.UserContext(), i)
+		if e != nil {
+			return e
+		}
+		if !ok {
+			return apperrors.NotFound()
+		}
 	}
 	v, e := h.api.Item(c.UserContext(), i)
 	if e != nil {

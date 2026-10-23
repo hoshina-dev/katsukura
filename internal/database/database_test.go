@@ -70,7 +70,7 @@ func fixture(t *testing.T, db *sql.DB) (string, string, string, string, string, 
 	p, c, b, parent, child, other := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 	execOK(t, db, "INSERT INTO parts(id,sku,name) VALUES ($1,'P','Parent'),($2,'C','Child')", p, c)
 	execOK(t, db, "INSERT INTO part_components(id,parent_part_id,child_part_id,slot,required_quantity) VALUES ($1,$2,$3,'slot',1)", b, p, c)
-	execOK(t, db, "INSERT INTO inventory_items(id,part_id,assembly_state) VALUES ($1,$2,'complete'),($3,$4,'draft'),($5,$4,'draft')", parent, p, child, c, other)
+	execOK(t, db, "INSERT INTO inventory_items(id,part_id,assembly_state) VALUES ($1,$2,'draft'),($3,$4,'draft'),($5,$4,'draft')", parent, p, child, c, other)
 	return p, c, b, parent, child, other
 }
 

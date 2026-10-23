@@ -69,7 +69,7 @@ func TestInventoryLifecycleAndConcurrentQuantity(t *testing.T) {
 	if e = s.CreateComponent(ctx, parentPart.ID, slot); e != nil {
 		t.Fatal(e)
 	}
-	parent := &models.InventoryItem{PartID: parentPart.ID, AssemblyState: "complete"}
+	parent := &models.InventoryItem{PartID: parentPart.ID}
 	children := []*models.InventoryItem{{PartID: childPart.ID}, {PartID: childPart.ID}, {PartID: wrongPart.ID}}
 
 	for _, i := range children {
@@ -77,8 +77,11 @@ func TestInventoryLifecycleAndConcurrentQuantity(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	if e = s.CreateItem(ctx, &models.InventoryItem{PartID: parentPart.ID, AssemblyState: "complete"}); e == nil {
+		t.Fatal("complete item with missing components accepted")
+	}
 	if e = s.CreateItem(ctx, parent); e != nil {
-		t.Fatal("complete item with missing components rejected:", e)
+		t.Fatal(e)
 	}
 	if e = s.Install(ctx, parent.ID, &models.ItemComponent{ComponentItemID: children[2].ID, PartComponentID: slot.ID}); e == nil {
 		t.Fatal("wrong SKU accepted")
@@ -431,5 +434,148 @@ func TestGeneratedSKUAndItemBatch(t *testing.T) {
 	}
 	if len(serials) != 3 {
 		t.Fatal("serial numbers repeated")
+	}
+}
+
+func TestAssemblyCompletenessAndVisibility(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	admin, e := database.Connect(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	adminPool, _ := admin.DB()
+	defer adminPool.Close()
+	schema := "assembly_" + uuid.New().String()[:8]
+	if e = admin.Exec("CREATE SCHEMA " + schema).Error; e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
+	u, e := url.Parse(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+	db, e := database.Connect(u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	pool, _ := db.DB()
+	defer pool.Close()
+	if e = database.Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	s := services.New(repositories.New(db))
+	must := func(e error) {
+		t.Helper()
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	part := func(sku string) *models.Part {
+		p := &models.Part{SKU: sku, Name: sku}
+		must(s.CreatePart(ctx, p))
+		return p
+	}
+	slot := func(parent, child *models.Part, qty int, optional bool) *models.PartComponent {
+		c := &models.PartComponent{ChildPartID: child.ID, Slot: child.SKU, RequiredQuantity: qty, IsOptional: optional}
+		must(s.CreateComponent(ctx, parent.ID, c))
+		return c
+	}
+	item := func(p *models.Part) *models.InventoryItem {
+		i := &models.InventoryItem{PartID: p.ID}
+		must(s.CreateItem(ctx, i))
+		return i
+	}
+	install := func(parent, child *models.InventoryItem, c *models.PartComponent) *models.ItemComponent {
+		i := &models.ItemComponent{ComponentItemID: child.ID, PartComponentID: c.ID}
+		must(s.Install(ctx, parent.ID, i))
+		return i
+	}
+	state := func(i *models.InventoryItem) string {
+		t.Helper()
+		d, e := s.Item(ctx, i.ID)
+		must(e)
+		return d.AssemblyState
+	}
+	setState := func(i *models.InventoryItem, v string) error {
+		return s.PatchItem(ctx, i.ID, map[string]any{"assembly_state": v})
+	}
+	listed := func(p *models.Part, f models.Filter) int64 {
+		t.Helper()
+		f.PartID, f.Limit = &p.ID, 50
+		page, e := s.Items(ctx, f)
+		must(e)
+		return page.Total
+	}
+
+	chairPart, legPart, cushionPart, fabricPart := part("CHAIR"), part("LEG"), part("CUSHION"), part("FABRIC")
+	legSlot := slot(chairPart, legPart, 2, false)
+	cushionSlot := slot(chairPart, cushionPart, 1, true)
+	fabricSlot := slot(cushionPart, fabricPart, 1, false)
+	chair, cushion, fabric := item(chairPart), item(cushionPart), item(fabricPart)
+	legs := []*models.InventoryItem{item(legPart), item(legPart), item(legPart)}
+
+	if setState(chair, "complete") == nil {
+		t.Fatal("chair without legs marked complete")
+	}
+	install(chair, legs[0], legSlot)
+	install(chair, legs[1], legSlot)
+	must(setState(chair, "complete"))
+
+	// Leaf parts are ready in any state; installed and draft items are hidden
+	if n := listed(legPart, models.Filter{Public: true}); n != 1 {
+		t.Fatalf("public legs %d, want only the loose one", n)
+	}
+	if n := listed(legPart, models.Filter{Available: true}); n != 1 {
+		t.Fatalf("available legs %d", n)
+	}
+	if n := listed(chairPart, models.Filter{Public: true}); n != 1 {
+		t.Fatal("complete chair not listed")
+	}
+	if n := listed(cushionPart, models.Filter{Public: true}); n != 0 {
+		t.Fatal("draft cushion listed")
+	}
+	if ok, _ := s.ItemViewable(ctx, legs[0].ID); !ok {
+		t.Fatal("leg inside a listed chair not viewable")
+	}
+
+	// A draft child in an optional slot demotes the chair
+	install(chair, cushion, cushionSlot)
+	if state(chair) != "draft" {
+		t.Fatal("chair with a draft cushion stayed complete")
+	}
+	if ok, _ := s.ItemViewable(ctx, legs[0].ID); ok {
+		t.Fatal("leg inside a draft chair viewable")
+	}
+	fabricInstall := install(cushion, fabric, fabricSlot)
+	must(setState(cushion, "complete"))
+	must(setState(chair, "complete"))
+
+	// Removing deep down cascades to every complete ancestor
+	must(s.Remove(ctx, cushion.ID, fabricInstall.ID))
+	if state(cushion) != "draft" || state(chair) != "draft" {
+		t.Fatal("removal did not demote cushion and chair")
+	}
+	install(cushion, fabric, fabricSlot)
+	must(setState(cushion, "complete"))
+	must(setState(chair, "complete"))
+
+	// A new required slot, or a higher quantity, demotes existing items
+	_, e = s.UpdateComponent(ctx, chairPart.ID, legSlot.ID, map[string]any{"required_quantity": float64(3)})
+	must(e)
+	if state(chair) != "draft" {
+		t.Fatal("raising a quantity did not demote the chair")
+	}
+	install(chair, legs[2], legSlot)
+	must(setState(chair, "complete"))
+	slot(chairPart, part("BACK"), 1, false)
+	if state(chair) != "draft" {
+		t.Fatal("a new required slot did not demote the chair")
 	}
 }

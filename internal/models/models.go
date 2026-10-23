@@ -105,8 +105,12 @@ type Filter struct {
 	Search          string
 	PartID          *uuid.UUID
 	IncludeArchived bool
-	Limit           int
-	Offset          int
+	// Available: not installed in any item
+	Available bool
+	// Public: only items listed in public stock (see papi2_item_listed)
+	Public bool
+	Limit  int
+	Offset int
 }
 type Page[T any] struct {
 	Data   []T   `json:"data"`

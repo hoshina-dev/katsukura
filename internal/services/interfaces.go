@@ -26,4 +26,8 @@ type Store interface {
 	Items(context.Context, models.Filter) (models.Page[models.InventoryItem], error)
 	Tree(context.Context, uuid.UUID, int) (*models.TreeNode, error)
 	Summary(context.Context) (models.Summary, error)
+	// DemoteIncomplete sets complete items that break the assembly rule back
+	// to draft, repeating until parents are consistent. except is left alone.
+	DemoteIncomplete(ctx context.Context, except *uuid.UUID) error
+	ItemViewable(context.Context, uuid.UUID) (bool, error)
 }

@@ -183,7 +183,10 @@ func (s *Service) CreateComponent(ctx context.Context, parent uuid.UUID, c *mode
 		if _, e := r.GetPart(ctx, c.ChildPartID); e != nil {
 			return e
 		}
-		return r.Create(ctx, c)
+		if e := r.Create(ctx, c); e != nil {
+			return e
+		}
+		return r.DemoteIncomplete(ctx, nil)
 	})
 }
 func (s *Service) Install(ctx context.Context, parent uuid.UUID, i *models.ItemComponent) error {
@@ -215,6 +218,9 @@ func (s *Service) Install(ctx context.Context, parent uuid.UUID, i *models.ItemC
 		if e = r.Create(ctx, i); e != nil {
 			return e
 		}
+		if e = r.DemoteIncomplete(ctx, nil); e != nil {
+			return e
+		}
 		fresh, e := r.GetInstallation(ctx, i.ID)
 		if e != nil {
 			return e
@@ -235,7 +241,10 @@ func (s *Service) Remove(ctx context.Context, parent, id uuid.UUID) error {
 		if i.RemovedAt != nil {
 			return nil
 		}
-		return r.Remove(ctx, parent, id)
+		if e := r.Remove(ctx, parent, id); e != nil {
+			return e
+		}
+		return r.DemoteIncomplete(ctx, nil)
 	})
 }
 func (s *Service) DeleteComponent(ctx context.Context, parent, id uuid.UUID) error {
@@ -293,6 +302,15 @@ func (s *Service) UpdateItem(ctx context.Context, id uuid.UUID, p map[string]any
 		if e := r.Update(ctx, &models.InventoryItem{}, id, p); e != nil {
 			return e
 		}
+		// Marking an item complete is checked, not undone: leave it for the
+		// database to reject if it is still missing components
+		var except *uuid.UUID
+		if p["assembly_state"] == "complete" {
+			except = &id
+		}
+		if e := r.DemoteIncomplete(ctx, except); e != nil {
+			return e
+		}
 		v, e = r.GetItem(ctx, id)
 		return e
 	})
@@ -316,6 +334,9 @@ func (s *Service) UpdateComponent(ctx context.Context, parent, id uuid.UUID, p m
 			}
 		}
 		if e = r.Update(ctx, &models.PartComponent{}, id, p); e != nil {
+			return e
+		}
+		if e = r.DemoteIncomplete(ctx, nil); e != nil {
 			return e
 		}
 		v, e = r.GetComponent(ctx, id)
@@ -454,6 +475,13 @@ func (s *Service) Items(ctx context.Context, f models.Filter) (v models.Page[mod
 }
 func (s *Service) Part(ctx context.Context, id uuid.UUID) (v *models.PartDetail, e error) {
 	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readPart(ctx, id); return e })
+	return
+}
+
+// ItemViewable reports whether the public UI may show the item: it is listed
+// in public stock, or installed under an item that is.
+func (s *Service) ItemViewable(ctx context.Context, id uuid.UUID) (ok bool, e error) {
+	e = s.repo.Read(ctx, func(r Store) error { ok, e = r.ItemViewable(ctx, id); return e })
 	return
 }
 func (s *Service) Item(ctx context.Context, id uuid.UUID) (v *models.ItemDetail, e error) {

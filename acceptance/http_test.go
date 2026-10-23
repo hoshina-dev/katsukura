@@ -158,18 +158,21 @@ func TestHTTPReferencedBOMAndNullablePatch(t *testing.T) {
 	}
 	expectError(t, request(t, app, "DELETE", "/api/v1/inventory/"+child, nil, 409), "constraint_violation", "active use")
 	request(t, app, "DELETE", parentPath+"/components/"+firstInstall, nil, 204)
+	if request(t, app, "GET", parentPath, nil, 200)["assembly_state"] != "draft" {
+		t.Fatal("removing a required component did not demote the parent")
+	}
 	expectError(t, request(t, app, "PATCH", slotPath, object("child_part_id", otherPart), 409), "referenced_resource", "")
 	current = request(t, app, "GET", componentPath, nil, 200)["data"].([]any)[0].(map[string]any)
 	if current["child_part_id"] != childPart {
 		t.Fatal("rejected historic child edit persisted")
 	}
 	expectError(t, request(t, app, "DELETE", slotPath, nil, 409), "referenced_resource", "")
-	extraParent := item(parentPart)
+	extraParent := id(t, request(t, app, "POST", "/api/v1/inventory", object("part_id", parentPart), 201))
 	request(t, app, "DELETE", "/api/v1/inventory/"+extraParent, nil, 204)
 	if request(t, app, "PATCH", parentPath, object("assembly_state", "draft"), 200)["assembly_state"] != "draft" {
 		t.Fatal("draft transition did not persist")
 	}
-	request(t, app, "PATCH", parentPath, object("assembly_state", "complete"), 200)
+	expectError(t, request(t, app, "PATCH", parentPath, object("assembly_state", "complete"), 409), "constraint_violation", "required slot")
 	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", object("notes", "kept")), 200)) != parent {
 		t.Fatal("item PATCH did not return updated entity")
 	}
@@ -180,8 +183,8 @@ func TestHTTPReferencedBOMAndNullablePatch(t *testing.T) {
 	if len(detail["history"].([]any)) != 2 || len(detail["components"].([]any)) != 0 {
 		t.Fatalf("history/active separation: %+v", detail)
 	}
-	if detail["assembly_state"] != "complete" || detail["metadata"].(map[string]any)["notes"] != "kept" {
-		t.Fatalf("complete item with missing required children or metadata changed: %+v", detail)
+	if detail["assembly_state"] != "draft" || detail["metadata"].(map[string]any)["notes"] != "kept" {
+		t.Fatalf("incomplete item became complete or metadata changed: %+v", detail)
 	}
 	for _, entry := range detail["history"].([]any) {
 		snapshot := entry.(map[string]any)["bom_snapshot"].(map[string]any)
