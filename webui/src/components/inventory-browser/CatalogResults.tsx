@@ -18,6 +18,7 @@ import {
   type CatalogView,
   parseCatalogQuery,
   parseCatalogView,
+  type SearchParams,
   skuHref,
   unitsLabel,
 } from "@/libs/inventory";
@@ -30,10 +31,10 @@ import { StockStatus, TypeLabel } from "./StockStatus";
 
 const GRID_COLS = { base: 1, sm: 2, md: 3 };
 
-function CatalogCard({ entry }: { entry: CatalogEntry }) {
+function CatalogCard({ entry, base }: { entry: CatalogEntry; base: string }) {
   return (
     <Link
-      href={skuHref(entry.sku)}
+      href={skuHref(entry.sku, base)}
       className="catalog-card-link"
       style={{ textDecoration: "none", color: "inherit" }}
     >
@@ -72,9 +73,11 @@ function CatalogCard({ entry }: { entry: CatalogEntry }) {
 export async function CatalogResults({
   query,
   view,
+  base,
 }: {
   query: CatalogQuery;
   view: CatalogView;
+  base: string;
 }) {
   const { entries, total } = await getCatalog(query);
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
@@ -97,11 +100,11 @@ export async function CatalogResults({
   return (
     <Stack gap="lg">
       {view === "table" ? (
-        <CatalogTable entries={entries} />
+        <CatalogTable entries={entries} base={base} />
       ) : (
         <SimpleGrid cols={GRID_COLS} spacing="lg">
           {entries.map((entry) => (
-            <CatalogCard key={entry.id} entry={entry} />
+            <CatalogCard key={entry.id} entry={entry} base={base} />
           ))}
         </SimpleGrid>
       )}
@@ -139,11 +142,19 @@ export function CatalogSkeleton({ view }: { view: CatalogView }) {
 interface CatalogProps {
   title: string;
   description: string;
-  params: Record<string, string | string[] | undefined>;
+  params: SearchParams;
+  // Where entries link to: "/inventory" to browse, "/backoffice" to edit
+  base?: string;
   addHref?: string;
 }
 
-export function Catalog({ title, description, params, addHref }: CatalogProps) {
+export function Catalog({
+  title,
+  description,
+  params,
+  base = "/inventory",
+  addHref,
+}: CatalogProps) {
   const query = parseCatalogQuery(params);
   const view = parseCatalogView(params);
 
@@ -158,7 +169,7 @@ export function Catalog({ title, description, params, addHref }: CatalogProps) {
         key={JSON.stringify([query, view])}
         fallback={<CatalogSkeleton view={view} />}
       >
-        <CatalogResults query={query} view={view} />
+        <CatalogResults query={query} view={view} base={base} />
       </Suspense>
     </Stack>
   );

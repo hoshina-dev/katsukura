@@ -20,9 +20,11 @@ const linkStyle = {
 export function BomTree({
   nodes,
   depth = 0,
+  base,
 }: {
   nodes: BomNode[];
   depth?: number;
+  base?: string;
 }) {
   return nodes.map((node) => (
     <TreeRow
@@ -31,7 +33,7 @@ export function BomTree({
       defaultOpen={depth === 0}
       label={
         <>
-          <Link href={skuHref(node.part.sku)} style={linkStyle}>
+          <Link href={skuHref(node.part.sku, base)} style={linkStyle}>
             <Text size="sm" fw={500} component="span" truncate>
               {node.part.name}
             </Text>
@@ -51,7 +53,7 @@ export function BomTree({
       }
       nested={
         node.children.length > 0 && (
-          <BomTree nodes={node.children} depth={depth + 1} />
+          <BomTree nodes={node.children} depth={depth + 1} base={base} />
         )
       }
     />

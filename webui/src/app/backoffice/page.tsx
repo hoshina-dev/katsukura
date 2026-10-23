@@ -10,6 +10,7 @@ export default async function BackofficePage({
       title="Inventory management"
       description="Manage products, parts, and stock"
       params={await searchParams}
+      base="/backoffice"
       addHref="/backoffice/add"
     />
   );

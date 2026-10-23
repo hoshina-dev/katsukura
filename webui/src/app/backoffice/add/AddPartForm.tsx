@@ -16,13 +16,14 @@ import {
 import { IconTrash } from "@tabler/icons-react";
 import { useRef, useState, useTransition } from "react";
 
-import { type Metadata, METADATA_KEYS } from "@/libs/inventory";
+import type { Metadata } from "@/libs/inventory";
 
-import { addPart, checkMetadata, type SubmitResult } from "./actions";
+import { addPart, checkMetadata, type SubmitResult } from "../actions";
 
 type Row = { id: number; key: string; value: string };
 
-export function AddPartForm({ sku }: { sku: string }) {
+// metadataKeys: the keys defined by the API's metadata schema
+export function AddPartForm({ metadataKeys }: { metadataKeys: string[] }) {
   const nextId = useRef(1);
   const [rows, setRows] = useState<Row[]>([{ id: 0, key: "", value: "" }]);
   const [focusId, setFocusId] = useState<number | null>(null);
@@ -83,9 +84,11 @@ export function AddPartForm({ sku }: { sku: string }) {
   ) => {
     const { metadata, errors } = buildMetadata();
     setError(null);
-    setChecked(null);
     setRowErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) {
+      setChecked(null);
+      return;
+    }
 
     startTransition(async () => {
       const result = await action(metadata);
@@ -97,7 +100,9 @@ export function AddPartForm({ sku }: { sku: string }) {
       }
       setRowErrors(byRow);
       setError(result.error ?? fields[""] ?? null);
-      setChecked(result.metadata ?? null);
+      // A failed create (e.g. duplicate SKU) keeps an earlier passing check
+      if (result.metadata) setChecked(result.metadata);
+      else if (result.fields) setChecked(null);
     });
   };
 
@@ -109,7 +114,6 @@ export function AddPartForm({ sku }: { sku: string }) {
           const form = new FormData(event.currentTarget);
           submit((metadata) =>
             addPart({
-              sku,
               name: String(form.get("name") ?? ""),
               description: String(form.get("description") ?? "").trim() || null,
               metadata,
@@ -123,7 +127,11 @@ export function AddPartForm({ sku }: { sku: string }) {
               {error}
             </Alert>
           )}
-          <TextInput label="SKU" value={sku} disabled />
+          <TextInput
+            label="SKU"
+            placeholder="Generated when the part is created"
+            disabled
+          />
           <TextInput name="name" label="Name" required />
           <Textarea name="description" label="Description" autosize />
 
@@ -140,7 +148,7 @@ export function AddPartForm({ sku }: { sku: string }) {
                     value={row.key}
                     autoFocus={row.id === focusId}
                     onChange={(key) => updateRow(row.id, { key })}
-                    data={METADATA_KEYS.filter(
+                    data={metadataKeys.filter(
                       (key) =>
                         !rows.some(
                           (other) =>
@@ -193,14 +201,19 @@ export function AddPartForm({ sku }: { sku: string }) {
           )}
 
           <Group justify="flex-end">
+            {!checked && (
+              <Text size="sm" c="dimmed">
+                Check metadata to enable Add part
+              </Text>
+            )}
             <Button
-              variant="default"
+              variant={checked ? "default" : "filled"}
               loading={pending}
               onClick={() => submit(checkMetadata)}
             >
               Check
             </Button>
-            <Button type="submit" loading={pending}>
+            <Button type="submit" loading={pending} disabled={!checked}>
               Add part
             </Button>
           </Group>

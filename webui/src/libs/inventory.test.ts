@@ -1,6 +1,5 @@
 import {
   imageUrls,
-  metadataErrors,
   itemHref,
   parseCatalogQuery,
   parseCatalogView,
@@ -27,27 +26,6 @@ describe("parseCatalogQuery", () => {
         page: "3",
       }),
     ).toEqual({ search: "bolt", type: "parts", stock: "in", page: 3 });
-  });
-});
-
-describe("metadataErrors", () => {
-  it("maps schema errors to keys", () => {
-    expect(
-      metadataErrors(
-        "invalid metadata: /category/0: got number, want string; " +
-          "/notes: got number, want null or string; " +
-          "additional properties 'a', 'b' not allowed",
-      ),
-    ).toEqual({
-      category: "item 0: got number, want string",
-      notes: "got number, want null or string",
-      a: "not in schema",
-      b: "not in schema",
-    });
-  });
-
-  it("ignores other errors", () => {
-    expect(metadataErrors("SKU already exists")).toBeNull();
   });
 });
 

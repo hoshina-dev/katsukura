@@ -128,12 +128,19 @@ interface CatalogPagerProps {
   page: number;
   pageCount: number;
   total: number;
+  // Search param holding the page number
+  param?: string;
 }
 
-export function CatalogPager({ page, pageCount, total }: CatalogPagerProps) {
+export function CatalogPager({
+  page,
+  pageCount,
+  total,
+  param = "page",
+}: CatalogPagerProps) {
   const { update } = useCatalogParams();
   const goTo = (next: number) =>
-    update({ page: next > 1 ? String(next) : null }, false);
+    update({ [param]: next > 1 ? String(next) : null }, false);
 
   return (
     <Group justify="space-between">

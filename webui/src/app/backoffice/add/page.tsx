@@ -1,7 +1,8 @@
 import { Stack, Text, Title } from "@mantine/core";
 import Link from "next/link";
 import { connection } from "next/server";
-import { randomUUID } from "node:crypto";
+
+import { getMetadataSchema } from "@/libs/papiRest";
 
 import { AddPartForm } from "./AddPartForm";
 
@@ -11,9 +12,9 @@ const linkStyle = {
 };
 
 export default async function AddPartPage() {
-  // Render per request so every visit gets a fresh SKU
+  // Render per request; the schema comes from the API, not the build
   await connection();
-  const sku = `RF-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const schema = await getMetadataSchema();
 
   return (
     <Stack gap="xl">
@@ -28,7 +29,7 @@ export default async function AddPartPage() {
         <Text c="dimmed">Create a new SKU schema</Text>
       </div>
 
-      <AddPartForm sku={sku} />
+      <AddPartForm metadataKeys={Object.keys(schema.properties ?? {})} />
     </Stack>
   );
 }

@@ -25,10 +25,14 @@ const API_URL = new URL(
 // Short cache for lookups that are repeated across catalog pages
 const LOOKUP_TTL_SECONDS = 30;
 
+export type ErrorDetail = { field: string; message: string };
+
 export class PapiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    // Per-field problems, e.g. one entry per invalid metadata key
+    readonly details: ErrorDetail[] = [],
   ) {
     super(message);
   }
@@ -47,17 +51,31 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     throw new PapiError(
       body?.error?.message || `PAPI request failed (${response.status})`,
       response.status,
+      body?.error?.details,
     );
   }
   return body as T;
 }
 
-function get<T>(path: string, ttl?: number) {
+// Cached lookups are tagged so server actions can expire them after writes
+function get<T>(path: string, ttl?: number, tags?: string[]) {
   return request<T>(
     path,
-    ttl ? { next: { revalidate: ttl } } : { cache: "no-store" },
+    ttl ? { next: { revalidate: ttl, tags } } : { cache: "no-store" },
   );
 }
+
+function send<T>(method: string, path: string, body?: unknown) {
+  return request<T>(path, {
+    method,
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+}
+
+export const partTag = (partId: string) => `part:${partId}`;
+export const itemsTag = (partId: string) => `items:${partId}`;
 
 function qs(params: Record<string, string | number | undefined>) {
   const search = new URLSearchParams();
@@ -67,28 +85,49 @@ function qs(params: Record<string, string | number | undefined>) {
   return search.toString();
 }
 
-export type NewPart = Pick<Part, "sku" | "name" | "description" | "metadata">;
+// The API generates the SKU when it is omitted
+export type NewPart = Pick<Part, "name" | "description" | "metadata"> & {
+  sku?: string;
+};
 
 export function createPart(part: NewPart) {
-  return request<Part>("/parts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(part),
-    cache: "no-store",
-  });
+  return send<Part>("POST", "/parts", part);
+}
+
+export function updatePart(
+  id: string,
+  patch: Partial<Pick<Part, "description" | "metadata">>,
+) {
+  return send<Part>("PATCH", `/parts/${id}`, patch);
+}
+
+export function deleteComponent(partId: string, componentId: string) {
+  return send<unknown>("DELETE", `/parts/${partId}/components/${componentId}`);
+}
+
+// The API generates serial numbers and copies the part's metadata
+export function createItems(partId: string, count: number) {
+  return send<{ data: Item[] }>("POST", `/parts/${partId}/items`, { count });
+}
+
+// Archives the item; the API keeps it for history
+export function archiveItem(id: string) {
+  return send<unknown>("DELETE", `/inventory/${id}`);
+}
+
+export function getMetadataSchema() {
+  return get<{ properties?: Record<string, unknown> }>(
+    "/metadata/schema",
+    LOOKUP_TTL_SECONDS,
+  );
 }
 
 export function validateMetadata(metadata: Record<string, unknown>) {
-  return request<Metadata>("/metadata/validate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(metadata),
-    cache: "no-store",
-  });
+  return send<Metadata>("POST", "/metadata/validate", metadata);
 }
 
 export function getPart(id: string) {
-  return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS);
+  return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS, [partTag(id)]);
 }
 
 export async function findPartBySku(sku: string) {
@@ -99,8 +138,10 @@ export async function findPartBySku(sku: string) {
   return match ? getPart(match.id) : null;
 }
 
-export function listItems(partId: string, limit = 100) {
-  return get<List<Item>>(`/inventory?${qs({ part_id: partId, limit })}`);
+export function listItems(partId: string, limit = 100, offset = 0) {
+  return get<List<Item>>(
+    `/inventory?${qs({ part_id: partId, limit, offset })}`,
+  );
 }
 
 export function getItem(id: string) {
@@ -119,6 +160,7 @@ async function stockCount(partId: string) {
   const list = await get<List<Item>>(
     `/inventory?${qs({ part_id: partId, limit: 1 })}`,
     LOOKUP_TTL_SECONDS,
+    [itemsTag(partId)],
   );
   return list.total;
 }

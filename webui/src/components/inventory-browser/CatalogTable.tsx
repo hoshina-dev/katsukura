@@ -18,7 +18,13 @@ import { type CatalogEntry, skuHref } from "@/libs/inventory";
 import { PartImage } from "./PartImage";
 import { StockStatus, TypeLabel } from "./StockStatus";
 
-export function CatalogTable({ entries }: { entries: CatalogEntry[] }) {
+export function CatalogTable({
+  entries,
+  base,
+}: {
+  entries: CatalogEntry[];
+  base: string;
+}) {
   const router = useRouter();
 
   return (
@@ -42,7 +48,7 @@ export function CatalogTable({ entries }: { entries: CatalogEntry[] }) {
         </TableThead>
         <TableTbody>
           {entries.map((entry) => {
-            const href = skuHref(entry.sku);
+            const href = skuHref(entry.sku, base);
             return (
               <TableTr
                 key={entry.id}
