@@ -6,11 +6,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/papi2/internal/models"
 	"regexp"
+	"strings"
 	"testing"
 )
 
+// nullMetadata is metadata with every schema field present and null.
+func nullMetadata() map[string]any {
+	return map[string]any{"category": nil, "manufacturer": nil, "country_of_origin": nil, "notes": nil, "temperature_stage": nil, "image_urls": nil, "specification": nil}
+}
+
 func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
-	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": map[string]any{"notes": nil}, "archived_at": nil}
+	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": nullMetadata(), "archived_at": nil}
 	if e := validatePatch(p, "serial_number location metadata archived_at"); e != nil {
 		t.Fatal(e)
 	}
@@ -45,14 +51,14 @@ func TestDecodeObject(t *testing.T) {
 }
 func TestDecodeMetadataPreservesLargeInteger(t *testing.T) {
 	var m map[string]any
-	if e := DecodeObject([]byte(`{"metadata":{"temperature_stage":9007199254740993}}`), &m); e != nil {
+	if e := DecodeObject([]byte(`{"metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":null}}`), &m); e != nil {
 		t.Fatal(e)
 	}
 	if e := validatePatch(m, "metadata"); e != nil {
 		t.Fatal(e)
 	}
 	value, e := m["metadata"].(models.JSONMap).Value()
-	if e != nil || value != `{"temperature_stage":9007199254740993}` {
+	if e != nil || !strings.Contains(value.(string), `"temperature_stage":9007199254740993`) {
 		t.Fatalf("large number changed: %v %v", value, e)
 	}
 }

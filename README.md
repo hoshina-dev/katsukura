@@ -81,7 +81,8 @@ history. Tree queries limit response depth without limiting stored nesting.
 
 `metadata` on parts and inventory items is validated against one shared JSON Schema,
 [`schema/metadata.schema.json`](schema/metadata.schema.json) (draft 2020-12), which is
-embedded in the binary and checked on every create and PATCH. Unknown keys are rejected.
+embedded in the binary and checked on every create and PATCH. The shape is fixed: every
+field is required and nullable, and unknown keys are rejected.
 
 | Field | Type |
 |---|---|
@@ -91,10 +92,11 @@ embedded in the binary and checked on every create and PATCH. Unknown keys are r
 | `notes` | string or null |
 | `temperature_stage` | number or null |
 | `image_urls` | list of strings or null; shown as a carousel in the UI |
+| `specification` | object of string values or null; a free-form spec table (e.g. `{"Width": "60 cm"}`) |
 
-All fields are optional and nullable; a null, missing, or empty value is simply not
-shown. To make a field nullable add `"null"` to its `type`; to make it mandatory add it
-to `required`. The UI reads the keys from `GET /metadata/schema`, so adding a field
+A null or empty value is simply not shown. Send every key, using null for unknown
+values; a missing key is reported as `required`. To add a field, add it to `properties`
+and `required`. The UI reads the keys from `GET /metadata/schema`, so adding a field
 needs no frontend change. The database only checks that metadata is an object, so
 direct SQL writes must follow the schema themselves.
 

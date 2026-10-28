@@ -67,6 +67,12 @@ func ValidateMetadata(m map[string]any) error {
 			}
 			continue
 		}
+		if missing, ok := u.Error.Kind.(*kind.Required); ok {
+			for _, key := range missing.Missing {
+				fields = append(fields, FieldError{key, "required"})
+			}
+			continue
+		}
 		// "/category/0" -> field "category", message "item 0: ..."
 		path := strings.Split(strings.TrimPrefix(u.InstanceLocation, "/"), "/")
 		message := u.Error.String()

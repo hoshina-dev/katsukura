@@ -15,7 +15,7 @@ func TestHTTPValidationAndNotFound(t *testing.T) {
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
-	}{{"GET", "/api/missing", "", 404}, {"GET", "/api", "", 404}, {"GET", "/API/unknown", "", 404}, {"GET", "/", "", 404}, {"GET", "/inventory", "", 404}, {"GET", "/healthz", "", 200}, {"GET", "/readyz", "", 200}, {"GET", "/api/v1/parts?limit=0", "", 400}, {"GET", "/api/v1/parts?offset=-1", "", 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","metadata":null}`, 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","id":"x"}`, 400}, {"GET", "/api/v1/inventory/bad", "", 400}, {"POST", "/api/v1/metadata/validate", `{"category":["a"],"image_urls":null}`, 200}, {"POST", "/api/v1/metadata/validate", `{"image_url":"x"}`, 400}, {"POST", "/api/v1/metadata/validate", `[]`, 400}, {"GET", "/api/v1/inventory?available=yes", "", 400}, {"GET", "/api/v1/parts?sort=price", "", 400}} {
+	}{{"GET", "/api/missing", "", 404}, {"GET", "/api", "", 404}, {"GET", "/API/unknown", "", 404}, {"GET", "/", "", 404}, {"GET", "/inventory", "", 404}, {"GET", "/healthz", "", 200}, {"GET", "/readyz", "", 200}, {"GET", "/api/v1/parts?limit=0", "", 400}, {"GET", "/api/v1/parts?offset=-1", "", 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","metadata":null}`, 400}, {"POST", "/api/v1/parts", `{"sku":"A","name":"A","id":"x"}`, 400}, {"GET", "/api/v1/inventory/bad", "", 400}, {"POST", "/api/v1/metadata/validate", `{"category":["a"],"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":null,"image_urls":null,"specification":{"Width":"60 cm"}}`, 200}, {"POST", "/api/v1/metadata/validate", `{"image_url":"x"}`, 400}, {"POST", "/api/v1/metadata/validate", `[]`, 400}, {"GET", "/api/v1/inventory?available=yes", "", 400}, {"GET", "/api/v1/parts?sort=price", "", 400}} {
 		t.Run(tc.path+tc.body, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -81,7 +81,7 @@ func TestMetadataEndpoints(t *testing.T) {
 		t.Fatalf("validate: %d %v", res.StatusCode, e)
 	}
 	got := fmt.Sprint(body.Error.Details)
-	if got != "[{category got string, want null or array} {colour not in schema}]" {
+	if got != "[{category got string, want null or array} {colour not in schema} {country_of_origin required} {image_urls required} {manufacturer required} {notes required} {specification required} {temperature_stage required}]" {
 		t.Fatalf("details: %s", got)
 	}
 }

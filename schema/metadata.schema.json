@@ -2,10 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoshina-dev/papi2/schema/metadata.schema.json",
   "title": "Metadata",
-  "description": "Shared metadata for parts (SKU schemas) and inventory items. Every field is optional unless listed in \"required\"; a field accepts null only when its type includes \"null\". A null or missing field is not displayed. Unknown fields are rejected.",
+  "description": "Shared metadata for parts (SKU schemas) and inventory items. The shape is fixed: every field is required and nullable. A null or empty field is not displayed. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
-  "required": [],
+  "required": [
+    "category",
+    "manufacturer",
+    "country_of_origin",
+    "notes",
+    "temperature_stage",
+    "image_urls",
+    "specification"
+  ],
   "properties": {
     "category": {
       "description": "Category tags; null or empty is not displayed.",
@@ -28,6 +36,11 @@
       "description": "Image URLs shown in order by the UI carousel; null or empty hides the carousel.",
       "type": ["array", "null"],
       "items": { "type": "string" }
+    },
+    "specification": {
+      "description": "Free-form specification table: any spec name mapped to a string value, like a product spec sheet. null or empty is not displayed.",
+      "type": ["object", "null"],
+      "additionalProperties": { "type": "string" }
     }
   }
 }
