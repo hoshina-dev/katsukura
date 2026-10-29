@@ -38,7 +38,7 @@ export async function SkuDetail({
   return (
     <Stack gap="lg">
       <PageHeader
-        trail={[{ href: "/", label: "Parts" }]}
+        trail={[{ href: "/", label: "Units" }]}
         title={part.name}
         meta={
           <>

@@ -69,15 +69,15 @@ function NoResults({ total, search }: { total: number; search: string }) {
           {total > 0
             ? "This page is past the last result"
             : search
-              ? `No parts match “${search}”`
-              : "No parts yet"}
+              ? `No units match “${search}”`
+              : "No units yet"}
         </Text>
         <Text size="sm" c="dimmed" ta="center">
           {total > 0
             ? "Go back a page, or clear the search."
             : search
-              ? "Search looks at part names and SKUs. Try a shorter term."
-              : "Create the first part with New part; its SKU is generated for you."}
+              ? "Search looks at unit names and SKUs. Try a shorter term."
+              : "Create the first unit with New unit; its SKU is generated for you."}
         </Text>
       </Stack>
     </Box>
@@ -157,7 +157,7 @@ export function Catalog({ params }: { params: SearchParams }) {
 
   return (
     <Stack gap="md">
-      <PageHeader title="Parts" />
+      <PageHeader title="Units" />
       <CatalogToolbar />
       <Suspense
         key={JSON.stringify([query, view])}

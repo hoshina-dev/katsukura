@@ -7,14 +7,16 @@ const nextConfig: NextConfig = {
     // One 1 MB part image per call plus multipart overhead
     serverActions: { bodySizeLimit: "2mb" },
   },
-  // Old links from before the public browser moved to another frontend
+  // Old links: the public browser moved to another frontend, then parts were
+  // renamed to units
   async redirects() {
     return [
       { source: "/inventory", destination: "/", permanent: true },
       { source: "/backoffice", destination: "/", permanent: true },
-      { source: "/backoffice/add", destination: "/parts/new", permanent: true },
-      { source: "/inventory/:path+", destination: "/parts/:path+", permanent: true },
-      { source: "/backoffice/:path+", destination: "/parts/:path+", permanent: true },
+      { source: "/backoffice/add", destination: "/units/new", permanent: true },
+      { source: "/inventory/:path+", destination: "/units/:path+", permanent: true },
+      { source: "/backoffice/:path+", destination: "/units/:path+", permanent: true },
+      { source: "/parts/:path+", destination: "/units/:path+", permanent: true },
     ];
   },
 };

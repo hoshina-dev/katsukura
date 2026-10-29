@@ -132,7 +132,7 @@ export function imageUrls(metadata: Metadata) {
 }
 
 export function skuHref(sku: string) {
-  return `/parts/${encodeURIComponent(sku)}`;
+  return `/units/${encodeURIComponent(sku)}`;
 }
 
 export function itemHref(sku: string, itemId: string) {
@@ -148,8 +148,8 @@ export function isPositiveInt(value: unknown) {
   return Number.isInteger(Number(value)) && Number(value) >= 1;
 }
 
-export function unitsLabel(count: number) {
-  return `${count} ${count === 1 ? "unit" : "units"}`;
+export function itemsLabel(count: number) {
+  return `${count} ${count === 1 ? "item" : "items"}`;
 }
 
 // Default slot name for a new BOM row, e.g. "Door Handle" -> "door_handle"

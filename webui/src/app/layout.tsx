@@ -12,7 +12,7 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Inventory Manage Backoffice",
-  description: "Manage parts, stock, and bills of materials",
+  description: "Manage units, stock, and bills of materials",
 };
 
 export default function RootLayout({

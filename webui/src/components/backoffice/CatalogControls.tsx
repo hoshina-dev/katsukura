@@ -87,10 +87,10 @@ export function CatalogToolbar() {
       />
       <Button
         component={Link}
-        href="/parts/new"
+        href="/units/new"
         leftSection={<IconPlus size={16} />}
       >
-        New part
+        New unit
       </Button>
     </Group>
   );

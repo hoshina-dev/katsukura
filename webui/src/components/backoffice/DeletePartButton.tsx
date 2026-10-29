@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { deletePart } from "@/app/actions";
-import { unitsLabel } from "@/libs/inventory";
+import { itemsLabel } from "@/libs/inventory";
 
 import { ConfirmModal } from "./ConfirmModal";
 
@@ -70,13 +70,13 @@ export function DeletePartButton({
         title={`Delete ${name}?`}
         message={[
           itemCount > 0 &&
-            `This also deletes its ${unitsLabel(itemCount)} in inventory.`,
-          itemCount > 0 && "Any parts installed in them go back to stock.",
+            `This also deletes its ${itemsLabel(itemCount)} in inventory.`,
+          itemCount > 0 && "Any items installed in them go back to stock.",
           "This can't be undone.",
         ]
           .filter(Boolean)
           .join(" ")}
-        confirmLabel="Delete part"
+        confirmLabel="Delete unit"
         loading={pending}
         error={error}
         onConfirm={remove}

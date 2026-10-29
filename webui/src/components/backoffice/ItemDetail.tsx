@@ -31,7 +31,7 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
     <Stack gap="lg">
       <PageHeader
         trail={[
-          { href: "/", label: "Parts" },
+          { href: "/", label: "Units" },
           { href: skuHref(part.sku), label: part.name },
         ]}
         title={serialLabel(item)}

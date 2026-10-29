@@ -107,11 +107,11 @@ export function AddPartForm() {
         }}
       >
         <Stack gap="lg">
-          <FormGroup title="Part">
+          <FormGroup title="Unit">
             <TextInput
               name="name"
               label="Name"
-              description="The SKU is generated when the part is created"
+              description="The SKU is generated when the unit is created"
               required
             />
             <Textarea
@@ -252,7 +252,7 @@ export function AddPartForm() {
 
           <Group justify="flex-end">
             <Button type="submit" loading={pending}>
-              Create part
+              Create unit
             </Button>
           </Group>
         </Stack>

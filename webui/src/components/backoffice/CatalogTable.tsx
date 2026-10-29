@@ -84,7 +84,7 @@ export function CatalogTable({
       >
         <TableThead>
           <TableTr>
-            <TableTh>Part</TableTh>
+            <TableTh>Unit</TableTh>
             <TableTh ta="right" w={90}>
               Total
             </TableTh>
@@ -172,7 +172,7 @@ export function CatalogTable({
           <Loader size="xs" />
         ) : (
           <Text size="xs" c="dimmed" className="tabular">
-            {stopped ?? `${entries.length} of ${total - deleted} parts`}
+            {stopped ?? `${entries.length} of ${total - deleted} units`}
           </Text>
         )}
       </Group>

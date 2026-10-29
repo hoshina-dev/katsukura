@@ -86,7 +86,7 @@ export function BomSection({ partId, components }: BomSectionProps) {
   return (
     <Section
       title="Bill of materials"
-      description="Every item of this part must contain exactly these components"
+      description="Every item of this unit must contain exactly these components"
       actions={
         <Button
           size="xs"
@@ -109,7 +109,7 @@ export function BomSection({ partId, components }: BomSectionProps) {
       <ConfirmModal
         opened={confirming}
         title="Remove bill of materials?"
-        message="Every component row of this part is deleted. This cannot be undone."
+        message="Every component row of this unit is deleted. This cannot be undone."
         confirmLabel="Remove BOM"
         loading={pending}
         onConfirm={remove}
@@ -144,7 +144,7 @@ function BomEditor({
   return (
     <Stack gap="md">
       {components.length === 0 ? (
-        <EmptyNote>No components yet. Pick a part below to add the first slot.</EmptyNote>
+        <EmptyNote>No components yet. Pick a unit below to add the first slot.</EmptyNote>
       ) : (
         <Box style={{ overflowX: "auto" }} mx="-md">
           <Table verticalSpacing={8} horizontalSpacing="md" miw={560}>
@@ -186,7 +186,7 @@ function BomEditor({
       <ConfirmModal
         opened={deleting !== null}
         title="Remove component?"
-        message={`The ${deleting?.slot ?? ""} slot (${deleting?.child_part?.name ?? "unknown part"}) is removed from the bill of materials. This cannot be undone.`}
+        message={`The ${deleting?.slot ?? ""} slot (${deleting?.child_part?.name ?? "unknown unit"}) is removed from the bill of materials. This cannot be undone.`}
         confirmLabel="Remove"
         loading={pending}
         onConfirm={() => {
@@ -322,7 +322,7 @@ function AddChild({
     >
       <Select
         label="Add component"
-        placeholder="Search parts by name or SKU"
+        placeholder="Search units by name or SKU"
         searchable
         clearable
         value={childId}
@@ -339,7 +339,7 @@ function AddChild({
           const part = options.find((option) => option.id === value);
           if (part) setSlot(slotName(part.name));
         }}
-        nothingFoundMessage="No parts found"
+        nothingFoundMessage="No units found"
         style={{ flex: "2 1 240px" }}
       />
       <TextInput

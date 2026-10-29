@@ -1,7 +1,7 @@
 import { SkuDetail } from "@/components/backoffice/SkuDetail";
 import type { SearchParams } from "@/libs/inventory";
 
-export default async function PartPage({
+export default async function UnitPage({
   params,
   searchParams,
 }: {

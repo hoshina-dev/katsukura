@@ -7,14 +7,14 @@ import { usePathname } from "next/navigation";
 const NAV = [
   {
     href: "/",
-    label: "Parts",
+    label: "Units",
     match: (path: string) =>
-      path === "/" || (path.startsWith("/parts/") && path !== "/parts/new"),
+      path === "/" || (path.startsWith("/units/") && path !== "/units/new"),
   },
   {
-    href: "/parts/new",
-    label: "New part",
-    match: (path: string) => path === "/parts/new",
+    href: "/units/new",
+    label: "New unit",
+    match: (path: string) => path === "/units/new",
   },
 ];
 

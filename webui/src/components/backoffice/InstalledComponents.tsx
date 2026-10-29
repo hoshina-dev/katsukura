@@ -40,7 +40,7 @@ interface InstalledComponentsProps {
 }
 
 // Backoffice: the item's components per BOM slot; each can be swapped for an
-// available unit of the same SKU
+// available item of the same SKU
 export function InstalledComponents({
   parentItemId,
   slots,
@@ -54,7 +54,7 @@ export function InstalledComponents({
   return (
     <Section
       title="Installed components"
-      description="Replace a unit to swap in one from stock"
+      description="Replace an item to swap in one from stock"
     >
       <Stack gap="lg">
         {slots.map((slot) => {
@@ -194,7 +194,7 @@ function ReplacePicker({
       <Stack gap="sm">
         <Text size="sm" c="dimmed">
           Choose an available {slot.child_part?.name ?? "item"}. The current
-          unit goes back to stock.
+          item goes back to stock.
         </Text>
         {error && (
           <Alert color="red" variant="light">

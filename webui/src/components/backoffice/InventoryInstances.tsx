@@ -28,7 +28,7 @@ import {
   ITEMS_PAGE_PARAM,
   ITEMS_PAGE_SIZE,
   serialLabel,
-  unitsLabel,
+  itemsLabel,
 } from "@/libs/inventory";
 
 import { ConfirmModal } from "./ConfirmModal";
@@ -130,7 +130,7 @@ export function InventoryInstances({
   return (
     <Section
       title="Items"
-      description={total > 0 ? unitsLabel(total) : undefined}
+      description={total > 0 ? itemsLabel(total) : undefined}
       actions={actions}
       collapsible
     >
@@ -144,7 +144,7 @@ export function InventoryInstances({
           <EmptyNote>
             {total > 0
               ? "This page is past the last item. Go back a page."
-              : "No physical units yet. Add items to give each one a serial number; they start with this part's metadata."}
+              : "No physical items yet. Add items to give each one a serial number; they start with this unit's metadata."}
           </EmptyNote>
         ) : (
           <Box style={{ overflowX: "auto" }} mx="-md">

@@ -6,7 +6,7 @@ import {
   parseCatalogView,
   serialLabel,
   skuHref,
-  unitsLabel,
+  itemsLabel,
 } from "./inventory";
 
 describe("parseCatalogQuery", () => {
@@ -66,12 +66,12 @@ describe("helpers", () => {
   });
 
   it("encodes SKUs in links", () => {
-    expect(skuHref("A/B 1")).toBe("/parts/A%2FB%201");
-    expect(itemHref("A", "id")).toBe("/parts/A/items/id");
+    expect(skuHref("A/B 1")).toBe("/units/A%2FB%201");
+    expect(itemHref("A", "id")).toBe("/units/A/items/id");
   });
 
-  it("pluralizes units", () => {
-    expect(unitsLabel(1)).toBe("1 unit");
-    expect(unitsLabel(0)).toBe("0 units");
+  it("pluralizes items", () => {
+    expect(itemsLabel(1)).toBe("1 item");
+    expect(itemsLabel(0)).toBe("0 items");
   });
 });
