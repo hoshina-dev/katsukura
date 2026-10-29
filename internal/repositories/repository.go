@@ -24,30 +24,38 @@ func (r *Repository) WithLock(ctx context.Context, fn func(services.Store) error
 		return fn(New(tx))
 	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 }
+
+// first loads one row by id with the given associations preloaded.
+func first[T any](ctx context.Context, db *gorm.DB, id uuid.UUID, preload ...string) (*T, error) {
+	q := db.WithContext(ctx)
+	for _, p := range preload {
+		q = q.Preload(p)
+	}
+	v := new(T)
+	return v, q.First(v, "id = ?", id).Error
+}
 func (r *Repository) GetPart(ctx context.Context, id uuid.UUID) (*models.Part, error) {
-	v := new(models.Part)
-	e := r.db.WithContext(ctx).First(v, "id = ?", id).Error
-	return v, e
+	return first[models.Part](ctx, r.db, id)
 }
 func (r *Repository) GetItem(ctx context.Context, id uuid.UUID) (*models.InventoryItem, error) {
 	v := new(models.InventoryItem)
-	e := r.db.WithContext(ctx).Preload("Part").First(v, "id = ?", id).Error
-	return v, e
+	return v, withParent(r.db.WithContext(ctx)).Preload("Part").First(v, "id = ?", id).Error
+}
+
+// withParent preloads the item's active installation and its parent item.
+func withParent(q *gorm.DB) *gorm.DB {
+	return q.Preload("Parent", "removed_at IS NULL").Preload("Parent.ParentItem.Part")
 }
 func (r *Repository) GetComponent(ctx context.Context, id uuid.UUID) (*models.PartComponent, error) {
-	v := new(models.PartComponent)
-	e := r.db.WithContext(ctx).First(v, "id = ?", id).Error
-	return v, e
+	return first[models.PartComponent](ctx, r.db, id)
 }
 func (r *Repository) GetInstallation(ctx context.Context, id uuid.UUID) (*models.ItemComponent, error) {
-	v := new(models.ItemComponent)
-	e := r.db.WithContext(ctx).Preload("ComponentItem.Part").First(v, "id = ?", id).Error
-	return v, e
+	return first[models.ItemComponent](ctx, r.db, id, "ComponentItem.Part")
 }
 
 // Create inserts a row, or a slice of rows in batches
 func (r *Repository) Create(ctx context.Context, v any) error {
-	return r.db.WithContext(ctx).Omit("ChildPart", "ParentPart", "Part", "ComponentItem", "ParentItem").CreateInBatches(v, 1000).Error
+	return r.db.WithContext(ctx).Omit("ChildPart", "ParentPart", "Part", "ComponentItem", "ParentItem", "Parent").CreateInBatches(v, 1000).Error
 }
 
 const notInstalled = "NOT EXISTS (SELECT 1 FROM item_components c WHERE c.component_item_id = inventory_items.id AND c.removed_at IS NULL)"
@@ -92,17 +100,6 @@ func (r *Repository) Installations(ctx context.Context, id uuid.UUID, active boo
 	e := q.Order("installed_at DESC, id DESC").Find(&v).Error
 	return v, e
 }
-func (r *Repository) Parent(ctx context.Context, id uuid.UUID) (*models.ItemComponent, error) {
-	v := new(models.ItemComponent)
-	q := r.db.WithContext(ctx).Preload("ParentItem.Part").Where("component_item_id = ? AND removed_at IS NULL", id).Find(v)
-	if q.Error != nil {
-		return nil, q.Error
-	}
-	if q.RowsAffected == 0 {
-		return nil, nil
-	}
-	return v, nil
-}
 func (r *Repository) Parts(ctx context.Context, f models.Filter) (models.Page[models.Part], error) {
 	v := models.Page[models.Part]{Data: []models.Part{}, Limit: f.Limit, Offset: f.Offset}
 	q := r.db.WithContext(ctx).Model(&models.Part{})
@@ -110,7 +107,7 @@ func (r *Repository) Parts(ctx context.Context, f models.Filter) (models.Page[mo
 		q = q.Where("archived_at IS NULL")
 	}
 	if f.Search != "" {
-		q = q.Where("sku ILIKE ? OR name ILIKE ?", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%")
+		q = q.Where("sku ILIKE @s OR name ILIKE @s", sql.Named("s", like(f.Search)))
 	}
 	if e := q.Count(&v.Total).Error; e != nil {
 		return v, e
@@ -143,22 +140,45 @@ func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[mo
 		q = q.Where(notInstalled)
 	}
 	if f.Search != "" {
-		q = q.Joins("JOIN parts ON parts.id = inventory_items.part_id").Where("inventory_items.serial_number ILIKE ? OR parts.sku ILIKE ? OR parts.name ILIKE ?", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%", "%"+escapeSearch(f.Search)+"%")
+		q = q.Joins("JOIN parts ON parts.id = inventory_items.part_id").Where("inventory_items.serial_number ILIKE @s OR parts.sku ILIKE @s OR parts.name ILIKE @s", sql.Named("s", like(f.Search)))
 	}
 	if e := q.Count(&v.Total).Error; e != nil {
 		return v, e
 	}
-	e := q.Preload("Part").Order("inventory_items.created_at DESC, inventory_items.id DESC").Limit(f.Limit).Offset(f.Offset).Find(&v.Data).Error
-	return v, e
-}
-func (r *Repository) Summary(ctx context.Context) (models.Summary, error) {
-	v := models.Summary{}
-	e := r.db.WithContext(ctx).Raw(`SELECT (SELECT count(*) FROM parts WHERE archived_at IS NULL) AS parts, (SELECT count(*) FROM inventory_items WHERE archived_at IS NULL) AS items, (SELECT count(*) FROM item_components ic JOIN inventory_items i ON i.id=ic.component_item_id WHERE ic.removed_at IS NULL AND i.archived_at IS NULL) AS installed_items, (SELECT count(*) FROM inventory_items i WHERE i.archived_at IS NULL AND NOT EXISTS (SELECT 1 FROM item_components ic WHERE ic.component_item_id=i.id AND ic.removed_at IS NULL)) AS root_items`).Scan(&v).Error
+	e := withParent(q).Preload("Part").Order("inventory_items.created_at DESC, inventory_items.id DESC").Limit(f.Limit).Offset(f.Offset).Find(&v.Data).Error
 	return v, e
 }
 
-func escapeSearch(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+// Stock counts the unarchived items of each part; parts without items are left out.
+func (r *Repository) Stock(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]models.Stock, error) {
+	var rows []struct {
+		PartID uuid.UUID
+		models.Stock
+	}
+	e := r.db.WithContext(ctx).Raw(`SELECT part_id, count(*) AS total,
+	count(*) FILTER (WHERE NOT `+notInstalled+`) AS in_use,
+	count(*) FILTER (WHERE `+notInstalled+`) AS available
+	FROM inventory_items WHERE archived_at IS NULL AND part_id IN ? GROUP BY part_id`, partIDs).Scan(&rows).Error
+	stock := make(map[uuid.UUID]models.Stock, len(rows))
+	for _, row := range rows {
+		stock[row.PartID] = row.Stock
+	}
+	return stock, e
+}
+func (r *Repository) Summary(ctx context.Context) (models.Summary, error) {
+	v := models.Summary{}
+	e := r.db.WithContext(ctx).Raw(`SELECT
+	(SELECT count(*) FROM parts WHERE archived_at IS NULL) AS parts,
+	(SELECT count(*) FROM inventory_items WHERE archived_at IS NULL) AS items,
+	(SELECT count(*) FROM item_components ic JOIN inventory_items i ON i.id = ic.component_item_id
+		WHERE ic.removed_at IS NULL AND i.archived_at IS NULL) AS installed_items,
+	(SELECT count(*) FROM inventory_items WHERE archived_at IS NULL AND ` + notInstalled + `) AS root_items`).Scan(&v).Error
+	return v, e
+}
+
+// like is a pattern matching s anywhere, with LIKE wildcards in s escaped.
+func like(s string) string {
+	return "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s) + "%"
 }
 func (r *Repository) Read(ctx context.Context, fn func(services.Store) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

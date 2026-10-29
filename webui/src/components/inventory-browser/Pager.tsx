@@ -4,6 +4,8 @@ import { Button, Group, NumberInput, Text } from "@mantine/core";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { isPositiveInt } from "@/libs/inventory";
+
 // Updates search params in place; changing a filter resets the catalog page
 export function useSearchParamUpdate() {
   const params = useSearchParams();
@@ -48,7 +50,7 @@ export function Pager({ page, pageCount, total, param = "page" }: PagerProps) {
     update({ [param]: next > 1 ? String(next) : null }, false);
   const commit = () => {
     const next = Number(draft);
-    if (Number.isInteger(next) && next >= 1 && next <= pageCount) {
+    if (isPositiveInt(next) && next <= pageCount) {
       if (next !== page) goTo(next);
     } else {
       setDraft(page);

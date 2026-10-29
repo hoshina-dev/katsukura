@@ -77,6 +77,9 @@ func (s *parentUsageStore) Read(ctx context.Context, fn func(Store) error) error
 func (s *parentUsageStore) GetPart(context.Context, uuid.UUID) (*models.Part, error) {
 	return &models.Part{}, nil
 }
+func (s *parentUsageStore) Stock(context.Context, []uuid.UUID) (map[uuid.UUID]models.Stock, error) {
+	return nil, nil
+}
 func (s *parentUsageStore) Components(context.Context, uuid.UUID) ([]models.PartComponent, error) {
 	return []models.PartComponent{}, nil
 }

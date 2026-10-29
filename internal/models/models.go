@@ -48,6 +48,17 @@ type Part struct {
 	ArchivedAt  *time.Time `json:"archived_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	// Counts of the part's items; filled on part lists and details
+	Stock *Stock `json:"stock,omitempty" gorm:"-"`
+}
+
+// Stock counts a part's unarchived items.
+type Stock struct {
+	Total int64 `json:"total"`
+	// Installed in another item
+	InUse int64 `json:"in_use"`
+	// Not installed anywhere
+	Available int64 `json:"available"`
 }
 type PartComponent struct {
 	ID               uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
@@ -70,6 +81,8 @@ type InventoryItem struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	Part         *Part      `json:"part,omitempty" gorm:"foreignKey:PartID"`
+	// The active installation of this item in another, with parent_item loaded
+	Parent *ItemComponent `json:"parent,omitempty" gorm:"foreignKey:ComponentItemID"`
 }
 type ItemComponent struct {
 	ID              uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
@@ -90,7 +103,6 @@ type PartDetail struct {
 }
 type ItemDetail struct {
 	InventoryItem
-	Parent     *ItemComponent  `json:"parent"`
 	Components []ItemComponent `json:"components"`
 	History    []ItemComponent `json:"history"`
 }

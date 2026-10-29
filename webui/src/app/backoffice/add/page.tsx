@@ -1,15 +1,10 @@
 import { Stack, Text, Title } from "@mantine/core";
-import Link from "next/link";
 import { connection } from "next/server";
 
+import { TextLink } from "@/components/inventory-browser/TextLink";
 import { getMetadataSchema } from "@/libs/papiRest";
 
 import { AddPartForm } from "./AddPartForm";
-
-const linkStyle = {
-  textDecoration: "none",
-  color: "var(--mantine-color-anchor)",
-};
 
 export default async function AddPartPage() {
   // Render per request; the schema comes from the API, not the build
@@ -18,11 +13,7 @@ export default async function AddPartPage() {
 
   return (
     <Stack gap="xl">
-      <Link href="/backoffice" style={linkStyle}>
-        <Text size="sm" component="span">
-          ← Back to inventory management
-        </Text>
-      </Link>
+      <TextLink href="/backoffice">← Back to inventory management</TextLink>
 
       <div>
         <Title order={1}>Add part</Title>

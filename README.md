@@ -126,12 +126,12 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 
 | Resource | Operations |
 |---|---|
-| `/parts` | List/search/paginate and create SKU schemas |
-| `/parts/:id` | Read with BOM, edit, archive, restore |
+| `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts) |
+| `/parts/:id` | Read with BOM and `stock`, edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
 | `/parts/:id/items` | POST `{count}` (1–1000) to build items in one transaction, each with a generated `RF-SN-` serial number, a copy of the part's metadata, and its BOM filled from stock |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
-| `/inventory` | List/search/filter/paginate and create physical items |
+| `/inventory` | List/search/filter/paginate and create physical items; an installed item has `parent`, its active installation with `parent_item` |
 | `/inventory/:id` | Read ownership/history, edit, archive, restore |
 | `/inventory/:id/components/:installationID/replace` | POST `{component_item_id}` to swap an installed component for an available item of the same SKU |
 | `/inventory/:id/tree` | Read a nested tree with bounded depth |

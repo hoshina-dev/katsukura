@@ -1,20 +1,18 @@
 import {
   imageUrls,
+  isPositiveInt,
   itemHref,
   parseCatalogQuery,
   parseCatalogView,
+  serialLabel,
   skuHref,
   unitsLabel,
 } from "./inventory";
 
 describe("parseCatalogQuery", () => {
   it("falls back to defaults for missing or invalid params", () => {
-    expect(
-      parseCatalogQuery({ type: "bogus", sort: "price", page: "-2" }),
-    ).toEqual({
+    expect(parseCatalogQuery({ sort: "price", page: "-2" })).toEqual({
       search: "",
-      type: "all",
-      stock: "all",
       sort: "default",
       page: 1,
     });
@@ -24,15 +22,11 @@ describe("parseCatalogQuery", () => {
     expect(
       parseCatalogQuery({
         q: ["  bolt ", "nut"],
-        type: "parts",
-        stock: "in",
         sort: "amount",
         page: "3",
       }),
     ).toEqual({
       search: "bolt",
-      type: "parts",
-      stock: "in",
       sort: "amount",
       page: 3,
     });
@@ -40,6 +34,24 @@ describe("parseCatalogQuery", () => {
 });
 
 describe("helpers", () => {
+  it("labels serial numbers", () => {
+    expect(serialLabel({ serial_number: "SN-1" })).toBe("SN-1");
+    expect(serialLabel({ serial_number: null })).toBe("Unserialized");
+    expect(serialLabel(undefined)).toBe("Unserialized");
+  });
+
+  it("accepts only whole quantities of at least 1", () => {
+    expect([1, "3", 0, -1, 1.5, "", "x"].map(isPositiveInt)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
   it("parses the view", () => {
     expect(parseCatalogView({ view: "table" })).toBe("table");
     expect(parseCatalogView({})).toBe("grid");

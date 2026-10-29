@@ -14,8 +14,6 @@ interface DeletePartButtonProps {
   partId: string;
   name: string;
   itemCount: number;
-  // A composite's items release their components back to stock
-  isProduct: boolean;
   onDeleted?: () => void;
 }
 
@@ -25,7 +23,6 @@ export function DeletePartButton({
   partId,
   name,
   itemCount,
-  isProduct,
   onDeleted,
 }: DeletePartButtonProps) {
   const router = useRouter();
@@ -71,7 +68,7 @@ export function DeletePartButton({
         message={[
           itemCount > 0 &&
             `This also deletes its ${unitsLabel(itemCount)} in inventory.`,
-          itemCount > 0 && isProduct && "Their parts go back to stock.",
+          itemCount > 0 && "Any parts installed in them go back to stock.",
           "This can't be undone.",
         ]
           .filter(Boolean)

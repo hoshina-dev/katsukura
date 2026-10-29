@@ -13,6 +13,17 @@ export type Part = {
   description: string | null;
   metadata: Metadata;
   archived_at: string | null;
+  // Filled on part lists and details
+  stock?: Stock;
+};
+
+// Counts of a SKU's items
+export type Stock = {
+  total: number;
+  // Installed in another item
+  in_use: number;
+  // Not installed anywhere
+  available: number;
 };
 
 export type PartComponent = {
@@ -34,6 +45,8 @@ export type Item = {
   metadata: Metadata;
   archived_at: string | null;
   part?: Part;
+  // Where the item is installed, with parent_item loaded; absent when free
+  parent?: Installation;
 };
 
 export type Installation = {
@@ -48,7 +61,6 @@ export type Installation = {
 };
 
 export type ItemDetail = Item & {
-  parent: Installation | null;
   components: Installation[];
 };
 
@@ -81,15 +93,11 @@ export const LIST_PAGE_SIZE = 25;
 export const ITEMS_PAGE_SIZE = 20;
 export const ITEMS_PAGE_PARAM = "items_page";
 
-export type CatalogType = "all" | "products" | "parts";
-export type CatalogStock = "all" | "in";
 export type CatalogView = "grid" | "table";
 export type CatalogSort = "default" | "name" | "amount";
 
 export type CatalogQuery = {
   search: string;
-  type: CatalogType;
-  stock: CatalogStock;
   sort: CatalogSort;
   page: number;
 };
@@ -99,8 +107,7 @@ export type CatalogEntry = {
   sku: string;
   name: string;
   imageUrl: string | null;
-  isProduct: boolean;
-  stockCount: number;
+  stock: Stock;
 };
 
 export type SearchParams = Record<string, string | string[] | undefined>;
@@ -116,12 +123,9 @@ export function pageParam(params: SearchParams, key: string) {
 }
 
 export function parseCatalogQuery(params: SearchParams): CatalogQuery {
-  const type = param(params, "type");
   const sort = param(params, "sort");
   return {
     search: param(params, "q").trim(),
-    type: type === "products" || type === "parts" ? type : "all",
-    stock: param(params, "stock") === "in" ? "in" : "all",
     sort: sort === "name" || sort === "amount" ? sort : "default",
     page: pageParam(params, "page"),
   };
@@ -144,6 +148,15 @@ export function skuHref(sku: string, base = "/inventory") {
 
 export function itemHref(sku: string, itemId: string, base = "/inventory") {
   return `${skuHref(sku, base)}/items/${itemId}`;
+}
+
+export function serialLabel(item?: { serial_number: string | null }) {
+  return item?.serial_number ?? "Unserialized";
+}
+
+// Whole number of at least 1, e.g. a quantity typed into a NumberInput
+export function isPositiveInt(value: unknown) {
+  return Number.isInteger(Number(value)) && Number(value) >= 1;
 }
 
 export function unitsLabel(count: number) {

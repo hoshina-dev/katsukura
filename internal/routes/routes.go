@@ -5,6 +5,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/hoshina-dev/papi2/internal/handlers"
+	"time"
 )
 
 func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
@@ -13,7 +14,7 @@ func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
 	h := handlers.New(api)
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"status": "ok"}) })
 	app.Get("/readyz", func(c *fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(c.UserContext(), 5_000_000_000)
+		ctx, cancel := context.WithTimeout(c.UserContext(), 5*time.Second)
 		defer cancel()
 		if ready == nil || ready(ctx) != nil {
 			return c.Status(503).JSON(fiber.Map{"error": fiber.Map{"code": "not_ready", "message": "Database unavailable"}})

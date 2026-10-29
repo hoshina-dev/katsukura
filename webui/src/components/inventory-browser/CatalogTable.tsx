@@ -25,7 +25,6 @@ import {
 
 import { DeletePartButton } from "./DeletePartButton";
 import { PartImage } from "./PartImage";
-import { StockStatus, TypeLabel } from "./StockStatus";
 
 interface CatalogTableProps {
   // The first step of results, rendered on the server
@@ -55,10 +54,7 @@ export function CatalogTable({
   useEffect(() => {
     if (!entry?.isIntersecting || !hasMore || loading) return;
     setLoading(true);
-    loadCatalogPage(
-      { ...query, page: loaded.current + 1 },
-      base === "/inventory",
-    )
+    loadCatalogPage({ ...query, page: loaded.current + 1 })
       .then((next) => {
         loaded.current += 1;
         // Rows can shift while scrolling; skip any already shown
@@ -73,7 +69,7 @@ export function CatalogTable({
       })
       .catch(() => setStopped("Could not load more results"))
       .finally(() => setLoading(false));
-  }, [entry?.isIntersecting, hasMore, loading, query, base]);
+  }, [entry?.isIntersecting, hasMore, loading, query]);
 
   return (
     <Box
@@ -96,8 +92,9 @@ export function CatalogTable({
             <TableTh w={72}>Image</TableTh>
             <TableTh>Name</TableTh>
             <TableTh>SKU</TableTh>
-            <TableTh>Type</TableTh>
-            <TableTh>Stock</TableTh>
+            <TableTh>Total</TableTh>
+            <TableTh>In use</TableTh>
+            <TableTh>Available</TableTh>
             {editable && <TableTh w={56} />}
           </TableTr>
         </TableThead>
@@ -136,24 +133,15 @@ export function CatalogTable({
                     {entry.sku}
                   </Text>
                 </TableTd>
-                <TableTd>
-                  <TypeLabel isProduct={entry.isProduct} />
-                </TableTd>
-                <TableTd>
-                  <Group gap="xs" wrap="nowrap">
-                    <Text size="sm" fw={500}>
-                      {entry.stockCount}
-                    </Text>
-                    <StockStatus count={entry.stockCount} />
-                  </Group>
-                </TableTd>
+                <TableTd fw={600}>{entry.stock.total}</TableTd>
+                <TableTd>{entry.stock.in_use}</TableTd>
+                <TableTd>{entry.stock.available}</TableTd>
                 {editable && (
                   <TableTd>
                     <DeletePartButton
                       partId={entry.id}
                       name={entry.name}
-                      itemCount={entry.stockCount}
-                      isProduct={entry.isProduct}
+                      itemCount={entry.stock.total}
                       onDeleted={() => {
                         setEntries((rows) =>
                           rows.filter((row) => row.id !== entry.id),

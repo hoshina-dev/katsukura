@@ -14,7 +14,6 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconSearch } from "@tabler/icons-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
@@ -24,16 +23,13 @@ import {
   type Item,
   itemHref,
   type PartComponent,
+  serialLabel,
   skuHref,
 } from "@/libs/inventory";
 
+import { TextLink } from "./TextLink";
 import { errorLines } from "./Metadata";
 import { EmptyNote, Section } from "./Section";
-
-const linkStyle = {
-  textDecoration: "none",
-  color: "var(--mantine-color-anchor)",
-};
 
 interface InstalledComponentsProps {
   parentItemId: string;
@@ -71,14 +67,9 @@ export function InstalledComponents({
               <Group justify="space-between" wrap="nowrap">
                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
                   {child ? (
-                    <Link
-                      href={skuHref(child.sku, "/backoffice")}
-                      style={linkStyle}
-                    >
-                      <Text fw={600} component="span">
-                        {child.name}
-                      </Text>
-                    </Link>
+                    <TextLink href={skuHref(child.sku, "/backoffice")} fw={600}>
+                      {child.name}
+                    </TextLink>
                   ) : (
                     <Text fw={600}>{slot.child_part_id}</Text>
                   )}
@@ -100,18 +91,16 @@ export function InstalledComponents({
                     borderLeft: "2px solid var(--mantine-color-gray-3)",
                   }}
                 >
-                  <Link
+                  <TextLink
                     href={itemHref(
                       row.component_item?.part?.sku ?? child?.sku ?? "",
                       row.component_item_id,
                       "/backoffice",
                     )}
-                    style={linkStyle}
+                    ff="monospace"
                   >
-                    <Text size="sm" ff="monospace" component="span">
-                      {row.component_item?.serial_number ?? "Unserialized"}
-                    </Text>
-                  </Link>
+                    {serialLabel(row.component_item)}
+                  </TextLink>
                   <Button
                     size="xs"
                     variant="subtle"
@@ -231,7 +220,7 @@ function ReplacePicker({
                     value={item.id}
                     label={
                       <Text size="sm" ff="monospace" component="span">
-                        {item.serial_number ?? "Unserialized"}
+                        {serialLabel(item)}
                         {item.location ? ` · ${item.location}` : ""}
                       </Text>
                     }

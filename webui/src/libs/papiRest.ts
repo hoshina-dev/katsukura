@@ -77,7 +77,7 @@ function send<T>(method: string, path: string, body?: unknown) {
 }
 
 export const partTag = (partId: string) => `part:${partId}`;
-// Item changes can demote assemblies of other SKUs, so stock counts share one tag
+// Part details carry stock counts, which any item change can move
 export const ITEMS_TAG = "items";
 
 function qs(params: Record<string, string | number | undefined>) {
@@ -135,7 +135,10 @@ export function validateMetadata(metadata: Record<string, unknown>) {
 }
 
 export function getPart(id: string) {
-  return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS, [partTag(id)]);
+  return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS, [
+    partTag(id),
+    ITEMS_TAG,
+  ]);
 }
 
 export async function findPartBySku(sku: string) {
@@ -224,104 +227,32 @@ export function getItemTree(id: string) {
 
 // Catalog
 
-// Stock: items of the SKU; the public UI counts only those not installed
-async function stockCount(partId: string, availableOnly: boolean) {
-  const list = await get<List<Item>>(
-    `/inventory?${qs({ part_id: partId, limit: 1, available: flag(availableOnly) })}`,
-    LOOKUP_TTL_SECONDS,
-    [ITEMS_TAG],
-  );
-  return list.total;
-}
-
-async function toEntry(
-  part: Part,
-  availableOnly: boolean,
-): Promise<CatalogEntry> {
-  const [detail, stock] = await Promise.all([
-    getPart(part.id),
-    stockCount(part.id, availableOnly),
-  ]);
+function toEntry(part: Part): CatalogEntry {
   return {
     id: part.id,
     sku: part.sku,
     name: part.name,
     imageUrl: imageUrls(part.metadata)[0] ?? null,
-    isProduct: detail.components.length > 0,
-    stockCount: stock,
+    stock: part.stock ?? { total: 0, in_use: 0, available: 0 },
   };
-}
-
-async function allParts(search: string, sort?: string) {
-  const parts: Part[] = [];
-  for (let offset = 0; ; offset += 100) {
-    const list = await get<List<Part>>(
-      `/parts?${qs({ search, sort, limit: 100, offset })}`,
-    );
-    parts.push(...list.data);
-    if (list.data.length === 0 || parts.length >= list.total) return parts;
-  }
-}
-
-async function toEntries(
-  parts: Part[],
-  availableOnly: boolean,
-  batchSize = 10,
-) {
-  const entries: CatalogEntry[] = [];
-  for (let i = 0; i < parts.length; i += batchSize) {
-    entries.push(
-      ...(await Promise.all(
-        parts
-          .slice(i, i + batchSize)
-          .map((part) => toEntry(part, availableOnly)),
-      )),
-    );
-  }
-  return entries;
-}
-
-// The API sorts; "amount" counts the same items the page shows as stock
-function partSort(query: CatalogQuery, availableOnly: boolean) {
-  if (query.sort === "name") return "name";
-  if (query.sort === "amount")
-    return availableOnly ? "available_items" : "items";
-  return undefined;
 }
 
 export async function getCatalog(
   query: CatalogQuery,
-  availableOnly: boolean,
   pageSize = CATALOG_PAGE_SIZE,
 ) {
-  const offset = (query.page - 1) * pageSize;
-  const sort = partSort(query, availableOnly);
-
-  if (query.type === "all" && query.stock === "all") {
-    const list = await get<List<Part>>(
-      `/parts?${qs({ search: query.search, sort, limit: pageSize, offset })}`,
-    );
-    return {
-      entries: await Promise.all(
-        list.data.map((part) => toEntry(part, availableOnly)),
-      ),
-      total: list.total,
-    };
-  }
-
-  // PAPI cannot filter by product/part or stock yet, so filter the matching SKUs here
-  const entries = (
-    await toEntries(await allParts(query.search, sort), availableOnly)
-  ).filter(
-    (entry) =>
-      (query.type === "all" ||
-        (query.type === "products") === entry.isProduct) &&
-      (query.stock === "all" || entry.stockCount > 0),
+  const sort = { default: undefined, name: "name", amount: "items" }[
+    query.sort
+  ];
+  const list = await get<List<Part>>(
+    `/parts?${qs({
+      search: query.search,
+      sort,
+      limit: pageSize,
+      offset: (query.page - 1) * pageSize,
+    })}`,
   );
-  return {
-    entries: entries.slice(offset, offset + pageSize),
-    total: entries.length,
-  };
+  return { entries: list.data.map(toEntry), total: list.total };
 }
 
 // Bill of materials, resolved recursively. Each SKU is fetched once even when

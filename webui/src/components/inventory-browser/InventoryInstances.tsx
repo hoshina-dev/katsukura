@@ -16,27 +16,24 @@ import {
   Text,
 } from "@mantine/core";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { addItems, deleteItems } from "@/app/backoffice/actions";
 import {
+  isPositiveInt,
   type Item,
   itemHref,
   ITEMS_PAGE_PARAM,
   ITEMS_PAGE_SIZE,
+  serialLabel,
   unitsLabel,
 } from "@/libs/inventory";
 
-import { Pager } from "./Pager";
+import { TextLink } from "./TextLink";
 import { ConfirmModal } from "./ConfirmModal";
+import { Pager } from "./Pager";
 import { EmptyNote, Section } from "./Section";
-
-const linkStyle = {
-  textDecoration: "none",
-  color: "var(--mantine-color-anchor)",
-};
 
 interface InventoryInstancesProps {
   partId: string;
@@ -63,10 +60,10 @@ export function InventoryInstances({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const base = editable ? "/backoffice" : "/inventory";
   const pageCount = Math.max(1, Math.ceil(total / ITEMS_PAGE_SIZE));
-  const count = Number(quantity);
   // The API enforces the upper limit and reports it as an error
-  const validQuantity = Number.isInteger(count) && count >= 1;
+  const validQuantity = isPositiveInt(quantity);
   const allSelected =
     items.length > 0 && items.every((item) => selected.has(item.id));
 
@@ -101,7 +98,7 @@ export function InventoryInstances({
         leftSection={<IconPlus size={16} />}
         disabled={!validQuantity}
         loading={pending}
-        onClick={() => run(() => addItems(partId, count))}
+        onClick={() => run(() => addItems(partId, Number(quantity)))}
       >
         Add
       </Button>
@@ -154,6 +151,7 @@ export function InventoryInstances({
                 <TableTr>
                   <TableTh>Serial number</TableTh>
                   <TableTh>Location</TableTh>
+                  <TableTh>Installed in</TableTh>
                   <TableTh />
                   {editable && <TableTh w={40} />}
                 </TableTr>
@@ -169,19 +167,13 @@ export function InventoryInstances({
                       )}
                     </TableTd>
                     <TableTd>{item.location ?? "—"}</TableTd>
+                    <TableTd>
+                      <InstalledIn item={item} base={base} />
+                    </TableTd>
                     <TableTd ta="right">
-                      <Link
-                        href={itemHref(
-                          sku,
-                          item.id,
-                          editable ? "/backoffice" : "/inventory",
-                        )}
-                        style={linkStyle}
-                      >
-                        <Text size="sm" component="span">
-                          View
-                        </Text>
-                      </Link>
+                      <TextLink href={itemHref(sku, item.id, base)}>
+                        View
+                      </TextLink>
                     </TableTd>
                     {editable && (
                       <TableTd>
@@ -219,5 +211,21 @@ export function InventoryInstances({
         />
       )}
     </Section>
+  );
+}
+
+// Link to the item this one is installed in, or a dash when it is free
+function InstalledIn({ item, base }: { item: Item; base: string }) {
+  const parent = item.parent?.parent_item;
+  if (!parent) return "—";
+  return (
+    <TextLink href={itemHref(parent.part?.sku ?? "", parent.id, base)}>
+      {parent.part?.name ?? serialLabel(parent)}
+      {parent.serial_number && (
+        <Text span size="xs" c="dimmed" ff="monospace" ml={6}>
+          {parent.serial_number}
+        </Text>
+      )}
+    </TextLink>
   );
 }

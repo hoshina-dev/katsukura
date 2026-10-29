@@ -1,20 +1,15 @@
 import { Text } from "@mantine/core";
-import Link from "next/link";
 
 import {
   type BomNode,
   itemHref,
+  serialLabel,
   skuHref,
   type TreeNode,
 } from "@/libs/inventory";
 
+import { TextLink } from "./TextLink";
 import { TreeRow } from "./TreeRow";
-
-const linkStyle = {
-  textDecoration: "none",
-  color: "var(--mantine-color-anchor)",
-  minWidth: 0,
-};
 
 export function BomTree({
   nodes,
@@ -32,11 +27,9 @@ export function BomTree({
       defaultOpen={depth === 0}
       label={
         <>
-          <Link href={skuHref(node.part.sku, base)} style={linkStyle}>
-            <Text size="sm" fw={500} component="span" truncate>
-              {node.part.name}
-            </Text>
-          </Link>
+          <TextLink href={skuHref(node.part.sku, base)} fw={500} truncate>
+            {node.part.name}
+          </TextLink>
           <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
             × {node.quantity}
           </Text>
@@ -70,16 +63,15 @@ export function InstalledTree({
       defaultOpen={depth === 0}
       label={
         <>
-          <Link
+          <TextLink
             href={itemHref(item.part?.sku ?? "unknown", item.id, base)}
-            style={linkStyle}
+            fw={500}
+            truncate
           >
-            <Text size="sm" fw={500} component="span" truncate>
-              {item.part?.name ?? "Unknown part"}
-            </Text>
-          </Link>
+            {item.part?.name ?? "Unknown part"}
+          </TextLink>
           <Text size="xs" c="dimmed" ff="monospace" truncate>
-            {item.serial_number ?? "Unserialized"}
+            {serialLabel(item)}
           </Text>
           {truncated && (
             <Text size="xs" c="dimmed" ml="auto" style={{ flexShrink: 0 }}>

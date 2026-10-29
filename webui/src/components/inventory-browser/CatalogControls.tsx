@@ -26,7 +26,7 @@ import { useSearchParamUpdate } from "./Pager";
 const SORTS = [
   { value: "default", label: "Default" },
   { value: "name", label: "Name (A–Z)" },
-  { value: "amount", label: "Amount (most first)" },
+  { value: "amount", label: "Total (most first)" },
 ];
 
 export function CatalogToolbar({ addHref }: { addHref?: string }) {
@@ -51,25 +51,6 @@ export function CatalogToolbar({ addHref }: { addHref?: string }) {
         value={search}
         onChange={(event) => setSearch(event.currentTarget.value)}
         style={{ flex: "1 1 240px" }}
-      />
-      <SegmentedControl
-        aria-label="Type"
-        value={params.get("type") ?? "all"}
-        onChange={(value) => update({ type: value === "all" ? null : value })}
-        data={[
-          { value: "all", label: "All" },
-          { value: "products", label: "Products" },
-          { value: "parts", label: "Parts" },
-        ]}
-      />
-      <SegmentedControl
-        aria-label="Availability"
-        value={params.get("stock") ?? "all"}
-        onChange={(value) => update({ stock: value === "all" ? null : value })}
-        data={[
-          { value: "all", label: "All" },
-          { value: "in", label: "In stock" },
-        ]}
       />
       <SegmentedControl
         aria-label="View"

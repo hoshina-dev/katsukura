@@ -12,6 +12,7 @@ import (
 	"github.com/hoshina-dev/papi2/internal/apperrors"
 	"github.com/hoshina-dev/papi2/internal/models"
 	"github.com/hoshina-dev/papi2/schema"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -24,63 +25,99 @@ func New(r Store) *Service { return &Service{r} }
 func (s *Service) write(ctx context.Context, fn func(Store) error) error {
 	return apperrors.Translate(s.repo.WithLock(ctx, fn))
 }
-func (s *Service) readParts(ctx context.Context, f models.Filter) (models.Page[models.Part], error) {
-	v, e := s.repo.Parts(ctx, f)
+
+// read runs fn in a read-only transaction and translates its error.
+func read[T any](ctx context.Context, s *Service, fn func(Store) (T, error)) (v T, e error) {
+	e = s.repo.Read(ctx, func(r Store) error { v, e = fn(r); return e })
 	return v, apperrors.Translate(e)
 }
-func (s *Service) readItems(ctx context.Context, f models.Filter) (models.Page[models.InventoryItem], error) {
-	v, e := s.repo.Items(ctx, f)
-	return v, apperrors.Translate(e)
+func (s *Service) Parts(ctx context.Context, f models.Filter) (models.Page[models.Part], error) {
+	return read(ctx, s, func(r Store) (models.Page[models.Part], error) {
+		page, e := r.Parts(ctx, f)
+		if e != nil {
+			return page, e
+		}
+		return page, withStock(ctx, r, page.Data)
+	})
+}
+
+// withStock fills each part's item counts.
+func withStock(ctx context.Context, r Store, parts []models.Part) error {
+	ids := make([]uuid.UUID, len(parts))
+	for i, p := range parts {
+		ids[i] = p.ID
+	}
+	stock, e := r.Stock(ctx, ids)
+	for i, p := range parts {
+		v := stock[p.ID]
+		parts[i].Stock = &v
+	}
+	return e
+}
+func (s *Service) Items(ctx context.Context, f models.Filter) (models.Page[models.InventoryItem], error) {
+	return read(ctx, s, func(r Store) (models.Page[models.InventoryItem], error) { return r.Items(ctx, f) })
 }
 func (s *Service) Summary(ctx context.Context) (models.Summary, error) {
-	var v models.Summary
-	var e error
-	e = s.repo.Read(ctx, func(r Store) error { v, e = r.Summary(ctx); return e })
-	return v, e
+	return read(ctx, s, func(r Store) (models.Summary, error) { return r.Summary(ctx) })
 }
-func (s *Service) readPart(ctx context.Context, id uuid.UUID) (*models.PartDetail, error) {
-	p, e := s.repo.GetPart(ctx, id)
-	if e != nil {
-		return nil, apperrors.Translate(e)
-	}
-	c, e := s.repo.Components(ctx, id)
-	if e != nil {
-		return nil, e
-	}
-	parents, e := s.repo.ParentComponents(ctx, id)
-	if e != nil {
-		return nil, e
-	}
-	if parents == nil {
-		parents = []models.PartComponent{}
-	}
-	return &models.PartDetail{Part: *p, Components: c, Parents: parents}, nil
+func (s *Service) Part(ctx context.Context, id uuid.UUID) (*models.PartDetail, error) {
+	return read(ctx, s, func(r Store) (*models.PartDetail, error) {
+		p, e := r.GetPart(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		part := []models.Part{*p}
+		if e := withStock(ctx, r, part); e != nil {
+			return nil, e
+		}
+		c, e := r.Components(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		parents, e := r.ParentComponents(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		if parents == nil {
+			parents = []models.PartComponent{}
+		}
+		return &models.PartDetail{Part: part[0], Components: c, Parents: parents}, nil
+	})
 }
-func (s *Service) readComponents(ctx context.Context, id uuid.UUID) ([]models.PartComponent, error) {
-	if _, e := s.repo.GetPart(ctx, id); e != nil {
-		return nil, apperrors.Translate(e)
-	}
-	return s.repo.Components(ctx, id)
+func (s *Service) Components(ctx context.Context, id uuid.UUID) ([]models.PartComponent, error) {
+	return read(ctx, s, func(r Store) ([]models.PartComponent, error) {
+		if _, e := r.GetPart(ctx, id); e != nil {
+			return nil, e
+		}
+		return r.Components(ctx, id)
+	})
 }
-func (s *Service) readItem(ctx context.Context, id uuid.UUID) (*models.ItemDetail, error) {
-	i, e := s.repo.GetItem(ctx, id)
-	if e != nil {
-		return nil, apperrors.Translate(e)
+func (s *Service) Item(ctx context.Context, id uuid.UUID) (*models.ItemDetail, error) {
+	return read(ctx, s, func(r Store) (*models.ItemDetail, error) {
+		i, e := r.GetItem(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		c, e := r.Installations(ctx, id, true)
+		if e != nil {
+			return nil, e
+		}
+		h, e := r.Installations(ctx, id, false)
+		return &models.ItemDetail{InventoryItem: *i, Components: c, History: h}, e
+	})
+}
+func (s *Service) Tree(ctx context.Context, id uuid.UUID, depth int) (*models.TreeNode, error) {
+	if depth < 0 || depth > 100 {
+		return nil, apperrors.Invalid("depth must be between 0 and 100")
 	}
-	p, e := s.repo.Parent(ctx, id)
-	if e != nil {
-		return nil, e
-	}
-	c, e := s.repo.Installations(ctx, id, true)
-	if e != nil {
-		return nil, e
-	}
-	h, e := s.repo.Installations(ctx, id, false)
-	return &models.ItemDetail{InventoryItem: *i, Parent: p, Components: c, History: h}, e
+	return read(ctx, s, func(r Store) (*models.TreeNode, error) { return r.Tree(ctx, id, depth) })
 }
 
 // MaxNewItems caps how many items one CreateItems call may add.
 const MaxNewItems = 1000
+
+// maxQuantity is the largest BOM quantity the database column holds.
+const maxQuantity = math.MaxInt32
 
 // newSKU returns "RF-" plus 8 random hex digits, used when a part has no SKU.
 func newSKU() string {
@@ -256,7 +293,7 @@ func bomLocked(ctx context.Context, r Store, partID uuid.UUID) error {
 	return nil
 }
 func (s *Service) CreateComponent(ctx context.Context, parent uuid.UUID, c *models.PartComponent) error {
-	if c.ChildPartID == uuid.Nil || strings.TrimSpace(c.Slot) == "" || (c.RequiredQuantity < 1 || c.RequiredQuantity > 2147483647) {
+	if c.ChildPartID == uuid.Nil || strings.TrimSpace(c.Slot) == "" || c.RequiredQuantity < 1 || c.RequiredQuantity > maxQuantity {
 		return apperrors.Invalid("child_part_id, slot, and positive required_quantity are required")
 	}
 	c.Slot = strings.TrimSpace(c.Slot)
@@ -441,22 +478,22 @@ func validatePatch(p map[string]any, allowed string) error {
 			default:
 				err = fmt.Errorf("invalid number")
 			}
-			if err != nil || n < 1 || n > 2147483647 {
+			if err != nil || n < 1 || n > maxQuantity {
 				return apperrors.Invalid("required_quantity must be a positive integer")
 			}
 			p[k] = int(n)
 		case "description", "serial_number", "location":
-			if v != nil {
-				if t, ok := v.(string); !ok {
-					return apperrors.Invalid(k + " must be a string or null")
-				} else {
-					t = strings.TrimSpace(t)
-					if t == "" {
-						p[k] = nil
-					} else {
-						p[k] = t
-					}
-				}
+			if v == nil {
+				continue
+			}
+			t, ok := v.(string)
+			if !ok {
+				return apperrors.Invalid(k + " must be a string or null")
+			}
+			if t = strings.TrimSpace(t); t == "" {
+				p[k] = nil
+			} else {
+				p[k] = t
 			}
 		default:
 			t, ok := v.(string)
@@ -473,13 +510,6 @@ func validatePatch(p map[string]any, allowed string) error {
 		}
 	}
 	return nil
-}
-func (s *Service) readTree(ctx context.Context, id uuid.UUID, depth int) (*models.TreeNode, error) {
-	if depth < 0 || depth > 100 {
-		return nil, apperrors.Invalid("depth must be between 0 and 100")
-	}
-	v, e := s.repo.Tree(ctx, id, depth)
-	return v, apperrors.Translate(e)
 }
 
 // NewMetadata fills fields missing from m with their schema defaults and
@@ -514,32 +544,6 @@ func DecodeObject(body []byte, target any) error {
 		return apperrors.Invalid("Invalid JSON body")
 	}
 	return nil
-}
-
-func (s *Service) Parts(ctx context.Context, f models.Filter) (v models.Page[models.Part], e error) {
-	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readParts(ctx, f); return e })
-	return
-}
-func (s *Service) Items(ctx context.Context, f models.Filter) (v models.Page[models.InventoryItem], e error) {
-	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readItems(ctx, f); return e })
-	return
-}
-func (s *Service) Part(ctx context.Context, id uuid.UUID) (v *models.PartDetail, e error) {
-	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readPart(ctx, id); return e })
-	return
-}
-
-func (s *Service) Item(ctx context.Context, id uuid.UUID) (v *models.ItemDetail, e error) {
-	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readItem(ctx, id); return e })
-	return
-}
-func (s *Service) Components(ctx context.Context, id uuid.UUID) (v []models.PartComponent, e error) {
-	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readComponents(ctx, id); return e })
-	return
-}
-func (s *Service) Tree(ctx context.Context, id uuid.UUID, depth int) (v *models.TreeNode, e error) {
-	e = s.repo.Read(ctx, func(r Store) error { v, e = New(r).readTree(ctx, id, depth); return e })
-	return
 }
 
 func trimNullable(p *string) *string {

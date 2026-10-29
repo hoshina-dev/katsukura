@@ -20,7 +20,6 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 
@@ -32,16 +31,17 @@ import {
   type SubmitResult,
   updateBomChild,
 } from "@/app/backoffice/actions";
-import { type PartComponent, skuHref, slotName } from "@/libs/inventory";
+import {
+  isPositiveInt,
+  type PartComponent,
+  skuHref,
+  slotName,
+} from "@/libs/inventory";
 
+import { TextLink } from "./TextLink";
 import { ConfirmModal } from "./ConfirmModal";
 import { errorLines } from "./Metadata";
 import { EmptyNote, Section } from "./Section";
-
-const linkStyle = {
-  textDecoration: "none",
-  color: "var(--mantine-color-anchor)",
-};
 
 interface BomSectionProps {
   partId: string;
@@ -239,19 +239,16 @@ function BomRow({
   const [quantity, setQuantity] = useState<string | number>(
     component.required_quantity,
   );
-  const count = Number(quantity);
-  const changed = count !== component.required_quantity;
+  const changed = Number(quantity) !== component.required_quantity;
   const child = component.child_part;
 
   return (
     <TableTr>
       <TableTd>
         {child ? (
-          <Link href={skuHref(child.sku, "/backoffice")} style={linkStyle}>
-            <Text size="sm" component="span">
-              {child.name}
-            </Text>
-          </Link>
+          <TextLink href={skuHref(child.sku, "/backoffice")}>
+            {child.name}
+          </TextLink>
         ) : (
           component.child_part_id.slice(0, 8)
         )}
@@ -277,9 +274,9 @@ function BomRow({
           <Button
             size="xs"
             variant="light"
-            disabled={!changed || !Number.isInteger(count) || count < 1}
+            disabled={!changed || !isPositiveInt(quantity)}
             loading={pending}
-            onClick={() => onSave({ required_quantity: count })}
+            onClick={() => onSave({ required_quantity: Number(quantity) })}
           >
             Save
           </Button>
@@ -319,7 +316,6 @@ function AddChild({
   const [childId, setChildId] = useState<string | null>(null);
   const [slot, setSlot] = useState("");
   const [quantity, setQuantity] = useState<string | number>(1);
-  const count = Number(quantity);
 
   useEffect(() => {
     let current = true;
@@ -379,9 +375,7 @@ function AddChild({
       />
       <Button
         leftSection={<IconPlus size={16} />}
-        disabled={
-          !childId || !slot.trim() || !Number.isInteger(count) || count < 1
-        }
+        disabled={!childId || !slot.trim() || !isPositiveInt(quantity)}
         loading={pending}
         onClick={() =>
           childId &&
@@ -389,7 +383,7 @@ function AddChild({
             {
               child_part_id: childId,
               slot: slot.trim(),
-              required_quantity: count,
+              required_quantity: Number(quantity),
             },
             reset,
           )

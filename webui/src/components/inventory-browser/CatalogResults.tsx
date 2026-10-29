@@ -2,7 +2,6 @@ import {
   Box,
   Card,
   CardSection,
-  Group,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -22,7 +21,6 @@ import {
   parseCatalogView,
   type SearchParams,
   skuHref,
-  unitsLabel,
 } from "@/libs/inventory";
 import { getCatalog } from "@/libs/papiRest";
 
@@ -31,7 +29,6 @@ import { DeletePartButton } from "./DeletePartButton";
 import { Pager } from "./Pager";
 import { CatalogTable } from "./CatalogTable";
 import { PartImage } from "./PartImage";
-import { StockStatus, TypeLabel } from "./StockStatus";
 
 const GRID_COLS = { base: 1, sm: 2, md: 3 };
 
@@ -58,27 +55,23 @@ function CatalogCard({ entry, base }: { entry: CatalogEntry; base: string }) {
             <DeletePartButton
               partId={entry.id}
               name={entry.name}
-              itemCount={entry.stockCount}
-              isProduct={entry.isProduct}
+              itemCount={entry.stock.total}
             />
           </Box>
         )}
         <Stack gap={4} mt="md">
-          <Group justify="space-between" wrap="nowrap" gap="xs">
-            <Text fw={600} truncate>
-              {entry.name}
-            </Text>
-            <TypeLabel isProduct={entry.isProduct} />
-          </Group>
+          <Text fw={600} truncate>
+            {entry.name}
+          </Text>
           <Text size="sm" c="dimmed" ff="monospace">
             {entry.sku}
           </Text>
-          <Group justify="space-between" mt="xs">
-            <StockStatus count={entry.stockCount} />
-            <Text size="sm" c="dimmed">
-              {unitsLabel(entry.stockCount)}
+          <Text size="sm" c="dimmed" mt="xs">
+            Total{" "}
+            <Text span fw={600} c="var(--mantine-color-text)">
+              {entry.stock.total}
             </Text>
-          </Group>
+          </Text>
         </Stack>
       </Card>
     </Link>
@@ -94,12 +87,11 @@ export async function CatalogResults({
   view: CatalogView;
   base: string;
 }) {
-  const availableOnly = base === "/inventory";
   // The list view scrolls from the start; the grid shows one page at a time
   const { entries, total } =
     view === "table"
-      ? await getCatalog({ ...query, page: 1 }, availableOnly, LIST_PAGE_SIZE)
-      : await getCatalog(query, availableOnly);
+      ? await getCatalog({ ...query, page: 1 }, LIST_PAGE_SIZE)
+      : await getCatalog(query);
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
 
   if (entries.length === 0) {
@@ -110,7 +102,7 @@ export async function CatalogResults({
           <Text size="sm" c="dimmed" ta="center">
             {total > 0
               ? "This page is empty. Go back to the previous page."
-              : "Try a different name or SKU, or clear the filters."}
+              : "Try a different name or SKU."}
           </Text>
         </Stack>
       </Card>

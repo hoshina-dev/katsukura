@@ -90,38 +90,37 @@ export async function addPart(part: NewPart): Promise<SubmitResult> {
   redirect(skuHref(sku, "/backoffice"));
 }
 
-export async function deletePart(partId: string): Promise<SubmitResult> {
+// Runs one API change, then expires the given cache tags
+async function mutate(
+  change: () => Promise<unknown>,
+  ...tags: string[]
+): Promise<SubmitResult> {
   try {
-    await archivePart(partId);
+    await change();
   } catch (error) {
     return toResult(error);
   }
-  updateTag(partTag(partId));
-  updateTag(ITEMS_TAG);
+  for (const tag of tags) updateTag(tag);
   return {};
+}
+
+export async function deletePart(partId: string) {
+  return mutate(() => archivePart(partId), partTag(partId), ITEMS_TAG);
 }
 
 export async function savePart(
   partId: string,
-  patch: { description: string | null; metadata: Record<string, unknown> },
-): Promise<SubmitResult> {
-  try {
-    await updatePart(partId, patch);
-  } catch (error) {
-    return toResult(error);
-  }
-  updateTag(partTag(partId));
-  return {};
+  description: string | null,
+  metadata: Record<string, unknown>,
+) {
+  return mutate(
+    () => updatePart(partId, { description, metadata }),
+    partTag(partId),
+  );
 }
 
 export async function addItems(partId: string, count: number) {
-  try {
-    await createItems(partId, count);
-  } catch (error) {
-    return toResult(error);
-  }
-  updateTag(ITEMS_TAG);
-  return {};
+  return mutate(() => createItems(partId, count), ITEMS_TAG);
 }
 
 export async function deleteItems(itemIds: string[]) {
@@ -143,18 +142,10 @@ export async function removeBom(partId: string, componentIds: string[]) {
 
 export async function saveItem(
   itemId: string,
-  patch: {
-    location: string | null;
-    metadata: Record<string, unknown>;
-  },
-): Promise<SubmitResult> {
-  try {
-    await updateItem(itemId, patch);
-  } catch (error) {
-    return toResult(error);
-  }
-  updateTag(ITEMS_TAG);
-  return {};
+  location: string | null,
+  metadata: Record<string, unknown>,
+) {
+  return mutate(() => updateItem(itemId, { location, metadata }), ITEMS_TAG);
 }
 
 // Items of a SKU that are not installed anywhere, for the replace picker
@@ -172,14 +163,11 @@ export async function replaceItem(
   parentItemId: string,
   installationId: string,
   itemId: string,
-): Promise<SubmitResult> {
-  try {
-    await replaceComponent(parentItemId, installationId, itemId);
-  } catch (error) {
-    return toResult(error);
-  }
-  updateTag(ITEMS_TAG);
-  return {};
+) {
+  return mutate(
+    () => replaceComponent(parentItemId, installationId, itemId),
+    ITEMS_TAG,
+  );
 }
 
 export async function findParts(search: string) {
@@ -188,35 +176,30 @@ export async function findParts(search: string) {
 }
 
 // BOM changes can demote existing items, so stock counts are expired too
-async function changeBom(partId: string, change: () => Promise<unknown>) {
-  try {
-    await change();
-  } catch (error) {
-    return toResult(error);
-  }
-  updateTag(partTag(partId));
-  updateTag(ITEMS_TAG);
-  return {};
-}
-
-export async function addBomChild(
-  partId: string,
-  component: NewComponent,
-): Promise<SubmitResult> {
-  return changeBom(partId, () => createComponent(partId, component));
+export async function addBomChild(partId: string, component: NewComponent) {
+  return mutate(
+    () => createComponent(partId, component),
+    partTag(partId),
+    ITEMS_TAG,
+  );
 }
 
 export async function updateBomChild(
   partId: string,
   componentId: string,
   patch: { required_quantity: number },
-): Promise<SubmitResult> {
-  return changeBom(partId, () => updateComponent(partId, componentId, patch));
+) {
+  return mutate(
+    () => updateComponent(partId, componentId, patch),
+    partTag(partId),
+    ITEMS_TAG,
+  );
 }
 
-export async function deleteBomChild(
-  partId: string,
-  componentId: string,
-): Promise<SubmitResult> {
-  return changeBom(partId, () => deleteComponent(partId, componentId));
+export async function deleteBomChild(partId: string, componentId: string) {
+  return mutate(
+    () => deleteComponent(partId, componentId),
+    partTag(partId),
+    ITEMS_TAG,
+  );
 }

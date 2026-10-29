@@ -10,25 +10,22 @@ import {
   TableThead,
   TableTr,
   Text,
+  TextInput,
   Title,
 } from "@mantine/core";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { imageUrls, itemHref, skuHref } from "@/libs/inventory";
+import { saveItem } from "@/app/backoffice/actions";
+import { imageUrls, itemHref, serialLabel, skuHref } from "@/libs/inventory";
 import { getItem, getItemTree, getPart, isMissing } from "@/libs/papiRest";
 
+import { DetailsEditor } from "./DetailsEditor";
 import { InstalledComponents } from "./InstalledComponents";
-import { ItemEditor } from "./ItemEditor";
 import { Field, MetadataSection } from "./Metadata";
 import { PartGallery } from "./PartGallery";
 import { EmptyNote, Section } from "./Section";
+import { TextLink } from "./TextLink";
 import { InstalledTree } from "./Trees";
-
-const linkStyle = {
-  textDecoration: "none",
-  color: "var(--mantine-color-anchor)",
-};
 
 interface ItemDetailProps {
   itemId: string;
@@ -60,18 +57,12 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
   return (
     <Stack gap="xl">
       <Breadcrumbs>
-        <Link href={base} style={linkStyle}>
-          <Text size="sm" component="span">
-            {editable ? "Inventory management" : "Inventory"}
-          </Text>
-        </Link>
-        <Link href={skuHref(part.sku, base)} style={linkStyle}>
-          <Text size="sm" component="span">
-            {part.name}
-          </Text>
-        </Link>
+        <TextLink href={base}>
+          {editable ? "Inventory management" : "Inventory"}
+        </TextLink>
+        <TextLink href={skuHref(part.sku, base)}>{part.name}</TextLink>
         <Text size="sm" c="dimmed">
-          {item.serial_number ?? "Unserialized"}
+          {serialLabel(item)}
         </Text>
       </Breadcrumbs>
 
@@ -85,38 +76,26 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
       </div>
 
       {images.length > 0 && (
-        <Box
-          maw={560}
-          style={{
-            borderRadius: "var(--mantine-radius-md)",
-            overflow: "hidden",
-            border: "1px solid var(--mantine-color-gray-3)",
-          }}
-        >
+        <Box maw={560}>
           <PartGallery images={images} alt={part.name} />
         </Box>
       )}
 
       <Section title="Item details">
         <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="lg">
-          <Field label="Serial number">
-            {item.serial_number ?? "Unserialized"}
-          </Field>
+          <Field label="Serial number">{serialLabel(item)}</Field>
           <Field label="Location">{item.location ?? "—"}</Field>
           <Field label="Installed in">
             {parentItem ? (
-              <Link
+              <TextLink
                 href={itemHref(
                   parentItem.part?.sku ?? part.sku,
                   parentItem.id,
                   base,
                 )}
-                style={linkStyle}
               >
-                {parentItem.part?.name ??
-                  parentItem.serial_number ??
-                  "Parent item"}
-              </Link>
+                {parentItem.part?.name ?? serialLabel(parentItem)}
+              </TextLink>
             ) : (
               "—"
             )}
@@ -125,10 +104,17 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
       </Section>
 
       {editable ? (
-        <ItemEditor
-          itemId={item.id}
-          location={item.location}
+        <DetailsEditor
+          title="Edit item"
+          field={
+            <TextInput
+              name="value"
+              label="Location"
+              defaultValue={item.location ?? ""}
+            />
+          }
           metadata={item.metadata}
+          save={saveItem.bind(null, item.id)}
         />
       ) : (
         <MetadataSection metadata={item.metadata} />
@@ -180,14 +166,9 @@ export async function ItemDetail({ itemId, editable }: ItemDetailProps) {
                     <TableTr key={component.id}>
                       <TableTd>
                         {child ? (
-                          <Link
-                            href={skuHref(child.sku, base)}
-                            style={linkStyle}
-                          >
-                            <Text size="sm" component="span">
-                              {child.name}
-                            </Text>
-                          </Link>
+                          <TextLink href={skuHref(child.sku, base)}>
+                            {child.name}
+                          </TextLink>
                         ) : (
                           component.child_part_id.slice(0, 8)
                         )}

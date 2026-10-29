@@ -163,6 +163,24 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	if free, _ := s.Items(ctx, models.Filter{PartID: &childPart.ID, Available: true, Limit: 10}); free.Total != 1 || free.Data[0].ID != installed.ComponentItemID {
 		t.Fatalf("replaced item not back in stock: %+v", free.Data)
 	}
+	// Lists and details name the active parent only, not ones in history
+	children, e := s.Items(ctx, models.Filter{PartID: &childPart.ID, Limit: 10})
+	must(e)
+	for _, child := range children.Data {
+		installedIn := child.Parent != nil && child.Parent.ParentItem != nil && child.Parent.ParentItem.Part != nil
+		if (child.ID == installed.ComponentItemID) == installedIn {
+			t.Fatalf("list parent of %s: %+v", child.ID, child.Parent)
+		}
+	}
+	if item, e := s.Item(ctx, spare.ID); e != nil || item.Parent == nil || item.Parent.ParentItemID != parent.ID {
+		t.Fatalf("detail parent: %+v %v", item, e)
+	}
+	if detail, e := s.Part(ctx, childPart.ID); e != nil || *detail.Stock != (models.Stock{Total: 5, InUse: 4, Available: 1}) {
+		t.Fatalf("stock: %+v %v", detail.Stock, e)
+	}
+	if page, e := s.Parts(ctx, models.Filter{Search: "CHILD", Limit: 10}); e != nil || page.Data[0].Stock == nil {
+		t.Fatalf("list stock: %+v %v", page, e)
+	}
 
 	tree, e := s.Tree(ctx, parent.ID, 1)
 	if e != nil || tree.Item.Part == nil || len(tree.Children) != 2 || tree.Children[0].Item.Part == nil {
@@ -229,6 +247,16 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 		if e != nil || page.Total != 1 || len(page.Data) != 0 {
 			t.Fatalf("list pagination failed %+v %v", page, e)
 		}
+	}
+	literal := &models.Part{SKU: "LITERAL-ITEMS", Name: "Literal items"}
+	must(s.CreatePart(ctx, literal))
+	must(s.CreateItem(ctx, &models.InventoryItem{PartID: literal.ID, SerialNumber: ptr("serial%1")}))
+	must(s.CreateItem(ctx, &models.InventoryItem{PartID: literal.ID, SerialNumber: ptr("serial_1")}))
+	if items, e := s.Items(ctx, models.Filter{Search: "l%1", Limit: 10}); e != nil || items.Total != 1 || *items.Data[0].SerialNumber != "serial%1" {
+		t.Fatalf("literal item search failed %+v %v", items, e)
+	}
+	if sum, e := s.Summary(ctx); e != nil || sum.Items == 0 || sum.Parts == 0 || sum.RootItems+sum.InstalledItems != sum.Items {
+		t.Fatalf("summary incorrect: %+v %v", sum, e)
 	}
 	app := routes.NewApp(s, func(context.Context) error { return nil })
 	for _, tc := range []struct {
@@ -576,3 +604,5 @@ func TestArchivePartTakesItsItems(t *testing.T) {
 		t.Fatalf("boxes %d, free legs %d", count(box, false), count(leg, true))
 	}
 }
+
+func ptr[T any](v T) *T { return &v }
