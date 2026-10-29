@@ -48,6 +48,17 @@ type Part struct {
 	ArchivedAt  *time.Time `json:"archived_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	// Counts of the part's items; filled on part lists and details
+	Stock *Stock `json:"stock,omitempty" gorm:"-"`
+}
+
+// Stock counts a part's unarchived items.
+type Stock struct {
+	Total int64 `json:"total"`
+	// Installed in another item
+	InUse int64 `json:"in_use"`
+	// Not installed anywhere
+	Available int64 `json:"available"`
 }
 type PartComponent struct {
 	ID               uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
@@ -55,23 +66,23 @@ type PartComponent struct {
 	ChildPartID      uuid.UUID `json:"child_part_id"`
 	Slot             string    `json:"slot"`
 	RequiredQuantity int       `json:"required_quantity"`
-	IsOptional       bool      `json:"is_optional"`
 	ChildPart        *Part     `json:"child_part,omitempty" gorm:"foreignKey:ChildPartID"`
 	ParentPart       *Part     `json:"parent_part,omitempty" gorm:"foreignKey:ParentPartID"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 type InventoryItem struct {
-	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
-	PartID        uuid.UUID  `json:"part_id"`
-	SerialNumber  *string    `json:"serial_number"`
-	AssemblyState string     `json:"assembly_state"`
-	Location      *string    `json:"location"`
-	Metadata      JSONMap    `json:"metadata" gorm:"type:jsonb"`
-	ArchivedAt    *time.Time `json:"archived_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	Part          *Part      `json:"part,omitempty" gorm:"foreignKey:PartID"`
+	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
+	PartID       uuid.UUID  `json:"part_id"`
+	SerialNumber *string    `json:"serial_number"`
+	Location     *string    `json:"location"`
+	Metadata     JSONMap    `json:"metadata" gorm:"type:jsonb"`
+	ArchivedAt   *time.Time `json:"archived_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Part         *Part      `json:"part,omitempty" gorm:"foreignKey:PartID"`
+	// The active installation of this item in another, with parent_item loaded
+	Parent *ItemComponent `json:"parent,omitempty" gorm:"foreignKey:ComponentItemID"`
 }
 type ItemComponent struct {
 	ID              uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
@@ -92,7 +103,6 @@ type PartDetail struct {
 }
 type ItemDetail struct {
 	InventoryItem
-	Parent     *ItemComponent  `json:"parent"`
 	Components []ItemComponent `json:"components"`
 	History    []ItemComponent `json:"history"`
 }
@@ -105,8 +115,12 @@ type Filter struct {
 	Search          string
 	PartID          *uuid.UUID
 	IncludeArchived bool
-	Limit           int
-	Offset          int
+	// Available: not installed in any item
+	Available bool
+	// Sort orders parts: newest (default), name, items, available_items
+	Sort   string
+	Limit  int
+	Offset int
 }
 type Page[T any] struct {
 	Data   []T   `json:"data"`

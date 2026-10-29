@@ -17,7 +17,6 @@ import (
 	"github.com/hoshina-dev/papi2/internal/repositories"
 	"github.com/hoshina-dev/papi2/internal/routes"
 	"github.com/hoshina-dev/papi2/internal/services"
-	"github.com/hoshina-dev/papi2/webui"
 )
 
 func main() {
@@ -58,7 +57,7 @@ func run() error {
 		}
 	}
 	service := services.New(repositories.New(db))
-	app := routes.NewApp(service, pool.PingContext, webui.FS())
+	app := routes.NewApp(service, pool.PingContext)
 	serverErrors := make(chan error, 1)
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	go func() {

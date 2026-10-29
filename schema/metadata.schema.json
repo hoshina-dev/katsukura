@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoshina-dev/papi2/schema/metadata.schema.json",
+  "title": "Metadata",
+  "description": "Shared metadata for parts (SKU schemas) and inventory items. The shape is fixed: every field is required, and a field left out on create gets its \"default\". Null or empty values are not displayed. Unknown fields are rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "category",
+    "manufacturer",
+    "country_of_origin",
+    "notes",
+    "temperature_stage",
+    "image_urls",
+    "specification"
+  ],
+  "properties": {
+    "category": {
+      "description": "Category tags; null or empty is not displayed.",
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "default": null
+    },
+    "manufacturer": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "country_of_origin": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "temperature_stage": {
+      "type": ["number", "null"],
+      "default": null
+    },
+    "image_urls": {
+      "description": "Image URLs shown in order by the UI carousel; null or empty hides the carousel.",
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "default": null
+    },
+    "specification": {
+      "description": "Free-form specification table: any spec name mapped to a string value, like a product spec sheet. Empty is not displayed.",
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": {}
+    }
+  }
+}

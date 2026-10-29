@@ -18,6 +18,7 @@ import (
 	"github.com/hoshina-dev/papi2/internal/repositories"
 	"github.com/hoshina-dev/papi2/internal/routes"
 	"github.com/hoshina-dev/papi2/internal/services"
+	"github.com/hoshina-dev/papi2/schema"
 )
 
 func realAPI(t *testing.T) *fiber.App {
@@ -64,7 +65,7 @@ func realAPI(t *testing.T) *fiber.App {
 	if err = database.Migrate(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-	return routes.NewApp(services.New(repositories.New(db)), pool.PingContext, nil)
+	return routes.NewApp(services.New(repositories.New(db)), pool.PingContext)
 }
 
 func request(t *testing.T, app *fiber.App, method, path string, body any, status int) map[string]any {
@@ -128,96 +129,94 @@ func expectError(t *testing.T, data map[string]any, code, constraint string) {
 	}
 }
 
-func TestHTTPReferencedBOMAndNullablePatch(t *testing.T) {
+func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	app := realAPI(t)
 	part := func(sku string) string {
 		return id(t, request(t, app, "POST", "/api/v1/parts", object("sku", sku, "name", sku, "description", "description"), 201))
 	}
 	parentPart, childPart, otherPart := part("ASSEMBLY"), part("CHILD"), part("OTHER")
 	componentPath := "/api/v1/parts/" + parentPart + "/components"
-	slot := id(t, request(t, app, "POST", componentPath, object("child_part_id", childPart, "slot", "left", "required_quantity", 2, "is_optional", true), 201))
-	item := func(p string) string {
-		return id(t, request(t, app, "POST", "/api/v1/inventory", object("part_id", p, "assembly_state", "complete", "location", "Shelf", "serial_number", uuid.NewString()), 201))
+	request(t, app, "POST", componentPath, object("child_part_id", childPart, "slot", "left", "required_quantity", 2, "is_optional", true), 400)
+	slot := id(t, request(t, app, "POST", componentPath, object("child_part_id", childPart, "slot", "left", "required_quantity", 2), 201))
+	newParent := object("part_id", parentPart, "location", "Shelf", "serial_number", "P-1")
+	expectError(t, request(t, app, "POST", "/api/v1/inventory", newParent, 409), "conflict", "need 2, have 0")
+	stock := func(p string, n int) []any {
+		return request(t, app, "POST", "/api/v1/parts/"+p+"/items", object("count", n), 201)["data"].([]any)
 	}
-	parent, child, second, wrong := item(parentPart), item(childPart), item(childPart), item(otherPart)
+	children, others := stock(childPart, 3), stock(otherPart, 1)
+	itemID := func(v any) string { return v.(map[string]any)["id"].(string) }
+	parent := id(t, request(t, app, "POST", "/api/v1/inventory", newParent, 201))
 	parentPath := "/api/v1/inventory/" + parent
-	install := func(c string) string {
-		return id(t, request(t, app, "POST", parentPath+"/components", object("component_item_id", c, "part_component_id", slot), 201))
+	detail := request(t, app, "GET", parentPath, nil, 200)
+	installed := detail["components"].([]any)
+	if len(installed) != 2 {
+		t.Fatalf("built parent incomplete: %+v", detail)
 	}
-	expectError(t, request(t, app, "POST", parentPath+"/components", object("component_item_id", wrong, "part_component_id", slot), 409), "slot_mismatch", "")
-	firstInstall, secondInstall := install(child), install(second)
-	slotPath := componentPath + "/" + slot
-	expectError(t, request(t, app, "PATCH", slotPath, object("required_quantity", 1), 409), "constraint_violation", "quantity")
-	current := request(t, app, "GET", componentPath, nil, 200)["data"].([]any)[0].(map[string]any)
-	if current["required_quantity"] != float64(2) {
-		t.Fatalf("failed quantity edit persisted: %+v", current)
+	first := installed[0].(map[string]any)
+	if first["bom_snapshot"].(map[string]any)["child_sku"] != "CHILD" {
+		t.Fatalf("missing snapshot: %+v", first)
 	}
-	request(t, app, "DELETE", parentPath+"/components/"+secondInstall, nil, 204)
-	if id(t, request(t, app, "PATCH", slotPath, object("required_quantity", 1, "is_optional", false), 200)) != slot {
-		t.Fatal("component PATCH did not return updated entity")
+
+	// Single installs and removals are gone; the BOM is fixed while items exist
+	request(t, app, "POST", parentPath+"/components", object("component_item_id", itemID(children[0]), "part_component_id", slot), 404)
+	request(t, app, "DELETE", parentPath+"/components/"+first["id"].(string), nil, 404)
+	expectError(t, request(t, app, "PATCH", componentPath+"/"+slot, object("required_quantity", 1), 409), "conflict", "BOM cannot change")
+	request(t, app, "PATCH", parentPath, object("assembly_state", "draft"), 400)
+
+	// Replace with the remaining child; wrong SKU and installed items are rejected
+	free := request(t, app, "GET", "/api/v1/inventory?available=true&part_id="+childPart, nil, 200)["data"].([]any)
+	if len(free) != 1 {
+		t.Fatalf("available children: %+v", free)
 	}
-	expectError(t, request(t, app, "DELETE", "/api/v1/inventory/"+child, nil, 409), "constraint_violation", "active use")
-	request(t, app, "DELETE", parentPath+"/components/"+firstInstall, nil, 204)
-	expectError(t, request(t, app, "PATCH", slotPath, object("child_part_id", otherPart), 409), "referenced_resource", "")
-	current = request(t, app, "GET", componentPath, nil, 200)["data"].([]any)[0].(map[string]any)
-	if current["child_part_id"] != childPart {
-		t.Fatal("rejected historic child edit persisted")
+	replacePath := parentPath + "/components/" + first["id"].(string) + "/replace"
+	expectError(t, request(t, app, "POST", replacePath, object("component_item_id", itemID(others[0])), 409), "slot_mismatch", "exact parent and child SKUs")
+	expectError(t, request(t, app, "POST", replacePath, object("component_item_id", installed[1].(map[string]any)["component_item_id"]), 409), "duplicate", "active parent")
+	if request(t, app, "POST", replacePath, object("component_item_id", itemID(free[0])), 201)["component_item_id"] != itemID(free[0]) {
+		t.Fatal("replacement not installed")
 	}
-	expectError(t, request(t, app, "DELETE", slotPath, nil, 409), "referenced_resource", "")
-	extraParent := item(parentPart)
-	request(t, app, "DELETE", "/api/v1/inventory/"+extraParent, nil, 204)
-	if request(t, app, "PATCH", parentPath, object("assembly_state", "draft"), 200)["assembly_state"] != "draft" {
-		t.Fatal("draft transition did not persist")
-	}
-	request(t, app, "PATCH", parentPath, object("assembly_state", "complete"), 200)
-	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", object("kept", true)), 200)) != parent {
+	expectError(t, request(t, app, "DELETE", "/api/v1/inventory/"+itemID(free[0]), nil, 409), "constraint_violation", "active use")
+
+	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", schema.WithDefaults(object("notes", "kept"))), 200)) != parent {
 		t.Fatal("item PATCH did not return updated entity")
 	}
-	detail := request(t, app, "GET", parentPath, nil, 200)
-	if detail["location"] != nil || detail["serial_number"] != nil {
-		t.Fatalf("nullable fields did not clear: %+v", detail)
+	detail = request(t, app, "GET", parentPath, nil, 200)
+	if detail["location"] != nil || detail["serial_number"] != nil || detail["metadata"].(map[string]any)["notes"] != "kept" {
+		t.Fatalf("nullable fields or metadata: %+v", detail)
 	}
-	if len(detail["history"].([]any)) != 2 || len(detail["components"].([]any)) != 0 {
+	if len(detail["components"].([]any)) != 2 || len(detail["history"].([]any)) != 1 {
 		t.Fatalf("history/active separation: %+v", detail)
 	}
-	if detail["assembly_state"] != "complete" || detail["metadata"].(map[string]any)["kept"] != true {
-		t.Fatalf("complete item with missing required children or metadata changed: %+v", detail)
-	}
-	for _, entry := range detail["history"].([]any) {
-		snapshot := entry.(map[string]any)["bom_snapshot"].(map[string]any)
-		if snapshot["required_quantity"] != float64(2) || snapshot["child_sku"] != "CHILD" {
-			t.Fatalf("historical snapshot changed with BOM edits: %+v", snapshot)
-		}
-	}
-	expectError(t, request(t, app, "PATCH", "/api/v1/parts/"+childPart, object("sku", "RENAMED"), 409), "constraint_violation", "SKU cannot change")
 	request(t, app, "PATCH", parentPath, object("metadata", nil), 400)
+	expectError(t, request(t, app, "PATCH", parentPath, object("metadata", object("image_url", "x")), 400), "invalid_request", "image_url")
+	expectError(t, request(t, app, "PATCH", "/api/v1/parts/"+childPart, object("sku", "RENAMED"), 409), "constraint_violation", "SKU cannot change")
 	if id(t, request(t, app, "PATCH", "/api/v1/parts/"+parentPart, object("description", nil), 200)) != parentPart {
 		t.Fatal("part PATCH did not return updated entity")
 	}
 	if request(t, app, "GET", "/api/v1/parts/"+parentPart, nil, 200)["description"] != nil {
 		t.Fatal("description did not clear")
 	}
-	for _, i := range []string{parent, child, second} {
-		request(t, app, "DELETE", "/api/v1/inventory/"+i, nil, 204)
+	tree := request(t, app, "GET", parentPath+"/tree?depth=100", nil, 200)
+	if tree["item"].(map[string]any)["id"] != parent || len(tree["children"].([]any)) != 2 {
+		t.Fatalf("tree: %+v", tree)
 	}
-	expectError(t, request(t, app, "DELETE", "/api/v1/parts/"+otherPart, nil, 409), "constraint_violation", "active use")
-	expectError(t, request(t, app, "DELETE", "/api/v1/parts/"+childPart, nil, 409), "constraint_violation", "active BOM")
+	request(t, app, "GET", parentPath+"/tree?depth=101", nil, 400)
+
+	// Deleting the composite releases its components; it cannot come back
+	request(t, app, "DELETE", parentPath, nil, 204)
+	if n := request(t, app, "GET", "/api/v1/inventory?available=true&part_id="+childPart, nil, 200)["total"]; n != float64(3) {
+		t.Fatalf("released children: %v", n)
+	}
+	expectError(t, request(t, app, "PATCH", parentPath, object("archived_at", nil), 409), "conflict", "cannot be restored")
+	for _, i := range append(children, others...) {
+		request(t, app, "DELETE", "/api/v1/inventory/"+itemID(i), nil, 204)
+	}
+	expectError(t, request(t, app, "DELETE", "/api/v1/parts/"+childPart, nil, 409), "conflict", "is used in the BOM of ASSEMBLY")
 	request(t, app, "DELETE", "/api/v1/parts/"+parentPart, nil, 204)
 	request(t, app, "DELETE", "/api/v1/parts/"+childPart, nil, 204)
 	expectError(t, request(t, app, "PATCH", "/api/v1/parts/"+parentPart, object("archived_at", nil), 409), "constraint_violation", "active BOM")
-	expectError(t, request(t, app, "PATCH", parentPath, object("archived_at", nil), 409), "constraint_violation", "active use")
-	if request(t, app, "GET", parentPath, nil, 200)["archived_at"] == nil || request(t, app, "GET", "/api/v1/parts/"+parentPart, nil, 200)["archived_at"] == nil {
-		t.Fatal("rejected restores persisted")
-	}
 	request(t, app, "PATCH", "/api/v1/parts/"+childPart, object("archived_at", nil), 200)
 	request(t, app, "PATCH", "/api/v1/parts/"+parentPart, object("archived_at", nil), 200)
-	request(t, app, "PATCH", parentPath, object("archived_at", nil), 200)
-	if request(t, app, "GET", parentPath, nil, 200)["archived_at"] != nil || request(t, app, "GET", "/api/v1/parts/"+parentPart, nil, 200)["archived_at"] != nil {
-		t.Fatal("successful restores did not persist")
+	if request(t, app, "GET", "/api/v1/parts/"+parentPart, nil, 200)["archived_at"] != nil {
+		t.Fatal("successful restore did not persist")
 	}
-	tree := request(t, app, "GET", parentPath+"/tree?depth=100", nil, 200)
-	if tree["item"].(map[string]any)["id"] != parent {
-		t.Fatal("tree returned incorrect item")
-	}
-	request(t, app, "GET", parentPath+"/tree?depth=101", nil, 400)
 }

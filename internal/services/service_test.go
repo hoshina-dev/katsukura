@@ -5,11 +5,14 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/papi2/internal/models"
+	"github.com/hoshina-dev/papi2/schema"
+	"regexp"
+	"strings"
 	"testing"
 )
 
 func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
-	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": map[string]any{"x": false}, "archived_at": nil}
+	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": schema.WithDefaults(nil), "archived_at": nil}
 	if e := validatePatch(p, "serial_number location metadata archived_at"); e != nil {
 		t.Fatal(e)
 	}
@@ -19,17 +22,26 @@ func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
 	if _, ok := p["metadata"].(models.JSONMap); !ok {
 		t.Fatal("metadata not converted to database JSON")
 	}
-	b := map[string]any{"is_optional": false, "required_quantity": float64(1)}
-	if e := validatePatch(b, "is_optional required_quantity"); e != nil {
+	b := map[string]any{"required_quantity": float64(1)}
+	if e := validatePatch(b, "required_quantity"); e != nil {
 		t.Fatal(e)
 	}
-	if b["is_optional"] != false || b["required_quantity"] != 1 {
-		t.Fatal("zero values lost")
+	if b["required_quantity"] != 1 {
+		t.Fatal("quantity not converted")
+	}
+}
+func TestNewMetadataFillsDefaults(t *testing.T) {
+	m, e := NewMetadata(nil)
+	if e != nil || len(m) != 7 || m["notes"] != nil || m["specification"] == nil {
+		t.Fatalf("got %v %v", m, e)
+	}
+	if _, e = NewMetadata(map[string]any{"specification": nil}); e == nil {
+		t.Fatal("accepted null specification")
 	}
 }
 func TestInvalidPatch(t *testing.T) {
-	for _, p := range []map[string]any{{"metadata": nil}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"assembly_state": "bad"}, {"name": "  "}} {
-		if e := validatePatch(p, "metadata archived_at required_quantity assembly_state name"); e == nil {
+	for _, p := range []map[string]any{{"metadata": nil}, {"metadata": map[string]any{"image_url": "x"}}, {"metadata": map[string]any{"category": "x"}}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"name": "  "}} {
+		if e := validatePatch(p, "metadata archived_at required_quantity name"); e == nil {
 			t.Fatalf("accepted invalid patch %v", p)
 		}
 	}
@@ -44,14 +56,14 @@ func TestDecodeObject(t *testing.T) {
 }
 func TestDecodeMetadataPreservesLargeInteger(t *testing.T) {
 	var m map[string]any
-	if e := DecodeObject([]byte(`{"metadata":{"large":9007199254740993}}`), &m); e != nil {
+	if e := DecodeObject([]byte(`{"metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":{}}}`), &m); e != nil {
 		t.Fatal(e)
 	}
 	if e := validatePatch(m, "metadata"); e != nil {
 		t.Fatal(e)
 	}
 	value, e := m["metadata"].(models.JSONMap).Value()
-	if e != nil || value != `{"large":9007199254740993}` {
+	if e != nil || !strings.Contains(value.(string), `"temperature_stage":9007199254740993`) {
 		t.Fatalf("large number changed: %v %v", value, e)
 	}
 }
@@ -64,6 +76,9 @@ type parentUsageStore struct {
 func (s *parentUsageStore) Read(ctx context.Context, fn func(Store) error) error { return fn(s) }
 func (s *parentUsageStore) GetPart(context.Context, uuid.UUID) (*models.Part, error) {
 	return &models.Part{}, nil
+}
+func (s *parentUsageStore) Stock(context.Context, []uuid.UUID) (map[uuid.UUID]models.Stock, error) {
+	return nil, nil
 }
 func (s *parentUsageStore) Components(context.Context, uuid.UUID) ([]models.PartComponent, error) {
 	return []models.PartComponent{}, nil
@@ -81,5 +96,17 @@ func TestPartParentQueryErrorAndEmptyContract(t *testing.T) {
 	part, e = New(store).Part(context.Background(), uuid.New())
 	if e != store.parentError || part != nil {
 		t.Fatalf("parent query error lost: %+v %v", part, e)
+	}
+}
+
+func TestGeneratedIdentifiers(t *testing.T) {
+	sku, serial := regexp.MustCompile(`^RF-[0-9A-F]{8}$`), regexp.MustCompile(`^RF-SN-\d{12}$`)
+	for i := 0; i < 100; i++ {
+		if s := newSKU(); !sku.MatchString(s) {
+			t.Fatalf("SKU %q", s)
+		}
+		if s := newSerialNumber(); !serial.MatchString(s) {
+			t.Fatalf("serial %q", s)
+		}
 	}
 }

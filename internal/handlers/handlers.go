@@ -9,7 +9,10 @@ import (
 	"github.com/hoshina-dev/papi2/internal/apperrors"
 	"github.com/hoshina-dev/papi2/internal/models"
 	"github.com/hoshina-dev/papi2/internal/services"
+	"github.com/hoshina-dev/papi2/schema"
 	"log/slog"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -23,9 +26,9 @@ type API interface {
 	Components(context.Context, uuid.UUID) ([]models.PartComponent, error)
 	CreatePart(context.Context, *models.Part) error
 	CreateItem(context.Context, *models.InventoryItem) error
+	CreateItems(context.Context, uuid.UUID, int) ([]models.InventoryItem, error)
 	CreateComponent(context.Context, uuid.UUID, *models.PartComponent) error
-	Install(context.Context, uuid.UUID, *models.ItemComponent) error
-	Remove(context.Context, uuid.UUID, uuid.UUID) error
+	Replace(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*models.ItemComponent, error)
 	DeleteComponent(context.Context, uuid.UUID, uuid.UUID) error
 	ArchivePart(context.Context, uuid.UUID) error
 	ArchiveItem(context.Context, uuid.UUID) error
@@ -41,10 +44,11 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	err = apperrors.Translate(err)
 	status := 500
 	code, message := "internal_error", "Internal server error"
+	var details []apperrors.Detail
 	var e *apperrors.Error
 	var f *fiber.Error
 	if errors.As(err, &e) {
-		status, code, message = e.Status, e.Code, e.Message
+		status, code, message, details = e.Status, e.Code, e.Message, e.Details
 	} else if errors.As(err, &f) {
 		status = f.Code
 		code = "http_error"
@@ -53,7 +57,11 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	if status >= 500 {
 		slog.Error("HTTP request failed", "method", c.Method(), "path", c.Path(), "error", err)
 	}
-	return c.Status(status).JSON(fiber.Map{"error": fiber.Map{"code": code, "message": message}})
+	body := fiber.Map{"code": code, "message": message}
+	if len(details) > 0 {
+		body["details"] = details
+	}
+	return c.Status(status).JSON(fiber.Map{"error": body})
 }
 func id(c *fiber.Ctx, key string) (uuid.UUID, error) {
 	v, e := uuid.Parse(c.Params(key))
@@ -61,6 +69,22 @@ func id(c *fiber.Ctx, key string) (uuid.UUID, error) {
 		return uuid.Nil, apperrors.Invalid("Invalid " + key)
 	}
 	return v, nil
+}
+
+// reply sends v as JSON with status, or the error when e is set.
+func reply(c *fiber.Ctx, status int, v any, e error) error {
+	if e != nil {
+		return e
+	}
+	return c.Status(status).JSON(v)
+}
+
+// done replies 204, or the error when e is set.
+func done(c *fiber.Ctx, e error) error {
+	if e != nil {
+		return e
+	}
+	return c.SendStatus(204)
 }
 func number(c *fiber.Ctx, key string, def, max int) (int, error) {
 	raw := c.Query(key)
@@ -73,23 +97,35 @@ func number(c *fiber.Ctx, key string, def, max int) (int, error) {
 	}
 	return v, nil
 }
-func filter(c *fiber.Ctx) (models.Filter, error) {
-	f := models.Filter{Search: c.Query("search")}
-	var e error
-	f.Limit, e = number(c, "limit", 50, 200)
-	if e != nil || f.Limit == 0 {
+func flag(c *fiber.Ctx, key string) (bool, error) {
+	switch c.Query(key, "false") {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	return false, apperrors.Invalid("Invalid " + key)
+}
+func filter(c *fiber.Ctx) (f models.Filter, e error) {
+	f.Search = c.Query("search")
+	if f.Limit, e = number(c, "limit", 50, 200); e != nil || f.Limit == 0 {
 		return f, apperrors.Invalid("limit must be between 1 and 200")
 	}
-	f.Offset, e = number(c, "offset", 0, int(^uint(0)>>1))
-	if e != nil {
-		return f, e
+	if f.Offset, e = number(c, "offset", 0, math.MaxInt); e != nil {
+		return
 	}
-	raw := c.Query("include_archived", "false")
-	if raw != "true" && raw != "false" {
-		return f, apperrors.Invalid("Invalid include_archived")
+	if f.IncludeArchived, e = flag(c, "include_archived"); e != nil {
+		return
 	}
-	f.IncludeArchived = raw == "true"
-	if raw = c.Query("part_id"); raw != "" {
+	if f.Available, e = flag(c, "available"); e != nil {
+		return
+	}
+	switch f.Sort = c.Query("sort"); f.Sort {
+	case "", "newest", "name", "items", "available_items":
+	default:
+		return f, apperrors.Invalid("sort must be newest, name, items or available_items")
+	}
+	if raw := c.Query("part_id"); raw != "" {
 		v, e := uuid.Parse(raw)
 		if e != nil {
 			return f, apperrors.Invalid("Invalid part_id")
@@ -98,37 +134,30 @@ func filter(c *fiber.Ctx) (models.Filter, error) {
 	}
 	return f, nil
 }
-func requireJSON(c *fiber.Ctx) error {
+
+// object decodes a JSON object body into target, numbers kept exact.
+func object(c *fiber.Ctx, target any) error {
 	if strings.ToLower(strings.TrimSpace(strings.Split(c.Get("Content-Type"), ";")[0])) != "application/json" {
 		return &apperrors.Error{Status: 415, Code: "unsupported_media_type", Message: "Content-Type must be application/json"}
 	}
-	return nil
+	return services.DecodeObject(c.Body(), target)
 }
-func body(c *fiber.Ctx, target any, allowed string) error {
-	if e := requireJSON(c); e != nil {
-		return e
-	}
-	if e := services.DecodeObject(c.Body(), target); e != nil {
-		return e
-	}
+
+// body decodes a create body, rejecting keys outside allowed.
+func body(c *fiber.Ctx, target any, allowed ...string) error {
 	var m map[string]json.RawMessage
-	_ = json.Unmarshal(c.Body(), &m)
+	if e := object(c, &m); e != nil {
+		return e
+	}
 	for k, v := range m {
-		valid := false
-		for _, a := range strings.Fields(allowed) {
-			if k == a {
-				valid = true
-				break
-			}
-		}
-		if !valid {
+		if !slices.Contains(allowed, k) {
 			return apperrors.Invalid("Unknown field: " + k)
 		}
-		if k == "metadata" && (string(v) == "null" || len(v) == 0 || v[0] != '{') {
+		if k == "metadata" && (len(v) == 0 || v[0] != '{') {
 			return apperrors.Invalid("metadata must be an object")
 		}
 	}
-	return nil
+	return services.DecodeObject(c.Body(), target)
 }
 
 func (h *Handler) ListParts(c *fiber.Ctx) error {
@@ -137,29 +166,19 @@ func (h *Handler) ListParts(c *fiber.Ctx) error {
 		return e
 	}
 	v, e := h.api.Parts(c.UserContext(), f)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
-
 func (h *Handler) ListItems(c *fiber.Ctx) error {
 	f, e := filter(c)
 	if e != nil {
 		return e
 	}
 	v, e := h.api.Items(c.UserContext(), f)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) Summary(c *fiber.Ctx) error {
 	v, e := h.api.Summary(c.UserContext())
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) Part(c *fiber.Ctx) error {
 	i, e := id(c, "id")
@@ -167,10 +186,7 @@ func (h *Handler) Part(c *fiber.Ctx) error {
 		return e
 	}
 	v, e := h.api.Part(c.UserContext(), i)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) Item(c *fiber.Ctx) error {
 	i, e := id(c, "id")
@@ -178,94 +194,103 @@ func (h *Handler) Item(c *fiber.Ctx) error {
 		return e
 	}
 	v, e := h.api.Item(c.UserContext(), i)
-	if e != nil {
+	return reply(c, 200, v, e)
+}
+func (h *Handler) MetadataSchema(c *fiber.Ctx) error {
+	c.Type("json")
+	return c.Send(schema.MetadataJSON)
+}
+func (h *Handler) ValidateMetadata(c *fiber.Ctx) error {
+	var m map[string]any
+	if e := object(c, &m); e != nil {
 		return e
 	}
-	return c.JSON(v)
+	v, e := services.NewMetadata(m)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) CreatePart(c *fiber.Ctx) error {
 	v := new(models.Part)
-	if e := body(c, v, "sku name description metadata"); e != nil {
+	if e := body(c, v, "sku", "name", "description", "metadata"); e != nil {
 		return e
 	}
-	if e := h.api.CreatePart(c.UserContext(), v); e != nil {
-		return e
-	}
-	return c.Status(201).JSON(v)
+	return reply(c, 201, v, h.api.CreatePart(c.UserContext(), v))
 }
 func (h *Handler) CreateItem(c *fiber.Ctx) error {
 	v := new(models.InventoryItem)
-	if e := body(c, v, "part_id serial_number assembly_state location metadata"); e != nil {
+	if e := body(c, v, "part_id", "serial_number", "location", "metadata"); e != nil {
 		return e
 	}
-	if e := h.api.CreateItem(c.UserContext(), v); e != nil {
+	return reply(c, 201, v, h.api.CreateItem(c.UserContext(), v))
+}
+func (h *Handler) CreateItems(c *fiber.Ctx) error {
+	i, e := id(c, "id")
+	if e != nil {
 		return e
 	}
-	return c.Status(201).JSON(v)
+	var v struct {
+		Count int `json:"count"`
+	}
+	if e := body(c, &v, "count"); e != nil {
+		return e
+	}
+	items, e := h.api.CreateItems(c.UserContext(), i, v.Count)
+	return reply(c, 201, fiber.Map{"data": items}, e)
 }
 func (h *Handler) CreateComponent(c *fiber.Ctx) error {
 	v := new(models.PartComponent)
-	if e := body(c, v, "child_part_id slot required_quantity is_optional"); e != nil {
+	if e := body(c, v, "child_part_id", "slot", "required_quantity"); e != nil {
 		return e
 	}
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := h.api.CreateComponent(c.UserContext(), i, v); e != nil {
-		return e
-	}
-	return c.Status(201).JSON(v)
+	return reply(c, 201, v, h.api.CreateComponent(c.UserContext(), i, v))
 }
-func (h *Handler) Install(c *fiber.Ctx) error {
-	v := new(models.ItemComponent)
-	if e := body(c, v, "component_item_id part_component_id position"); e != nil {
-		return e
-	}
+func (h *Handler) Replace(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := h.api.Install(c.UserContext(), i, v); e != nil {
+	j, e := id(c, "installationID")
+	if e != nil {
 		return e
 	}
-	return c.Status(201).JSON(v)
+	var v struct {
+		ComponentItemID uuid.UUID `json:"component_item_id"`
+	}
+	if e := body(c, &v, "component_item_id"); e != nil {
+		return e
+	}
+	if v.ComponentItemID == uuid.Nil {
+		return apperrors.Invalid("component_item_id is required")
+	}
+	installation, e := h.api.Replace(c.UserContext(), i, j, v.ComponentItemID)
+	return reply(c, 201, installation, e)
 }
 func (h *Handler) PatchPart(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := requireJSON(c); e != nil {
-		return e
-	}
 	var p map[string]any
-	if e := services.DecodeObject(c.Body(), &p); e != nil {
+	if e := object(c, &p); e != nil {
 		return e
 	}
 	v, e := h.api.UpdatePart(c.UserContext(), i, p)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) PatchItem(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := requireJSON(c); e != nil {
-		return e
-	}
 	var p map[string]any
-	if e := services.DecodeObject(c.Body(), &p); e != nil {
+	if e := object(c, &p); e != nil {
 		return e
 	}
 	v, e := h.api.UpdateItem(c.UserContext(), i, p)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) PatchComponent(c *fiber.Ctx) error {
 	i, e := id(c, "id")
@@ -276,38 +301,26 @@ func (h *Handler) PatchComponent(c *fiber.Ctx) error {
 	if e != nil {
 		return e
 	}
-	if e := requireJSON(c); e != nil {
-		return e
-	}
 	var p map[string]any
-	if e := services.DecodeObject(c.Body(), &p); e != nil {
+	if e := object(c, &p); e != nil {
 		return e
 	}
 	v, e := h.api.UpdateComponent(c.UserContext(), i, j, p)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }
 func (h *Handler) ArchivePart(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := h.api.ArchivePart(c.UserContext(), i); e != nil {
-		return e
-	}
-	return c.SendStatus(204)
+	return done(c, h.api.ArchivePart(c.UserContext(), i))
 }
 func (h *Handler) ArchiveItem(c *fiber.Ctx) error {
 	i, e := id(c, "id")
 	if e != nil {
 		return e
 	}
-	if e := h.api.ArchiveItem(c.UserContext(), i); e != nil {
-		return e
-	}
-	return c.SendStatus(204)
+	return done(c, h.api.ArchiveItem(c.UserContext(), i))
 }
 func (h *Handler) DeleteComponent(c *fiber.Ctx) error {
 	i, e := id(c, "id")
@@ -318,24 +331,7 @@ func (h *Handler) DeleteComponent(c *fiber.Ctx) error {
 	if e != nil {
 		return e
 	}
-	if e := h.api.DeleteComponent(c.UserContext(), i, j); e != nil {
-		return e
-	}
-	return c.SendStatus(204)
-}
-func (h *Handler) Remove(c *fiber.Ctx) error {
-	i, e := id(c, "id")
-	if e != nil {
-		return e
-	}
-	j, e := id(c, "installationID")
-	if e != nil {
-		return e
-	}
-	if e := h.api.Remove(c.UserContext(), i, j); e != nil {
-		return e
-	}
-	return c.SendStatus(204)
+	return done(c, h.api.DeleteComponent(c.UserContext(), i, j))
 }
 func (h *Handler) Components(c *fiber.Ctx) error {
 	i, e := id(c, "id")
@@ -365,8 +361,5 @@ func (h *Handler) Tree(c *fiber.Ctx) error {
 		return e
 	}
 	v, e := h.api.Tree(c.UserContext(), i, d)
-	if e != nil {
-		return e
-	}
-	return c.JSON(v)
+	return reply(c, 200, v, e)
 }

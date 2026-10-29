@@ -3,9 +3,7 @@
 .env
 .env.*
 bin
-webui/node_modules
-webui/dist
-webui/*.tsbuildinfo
+webui
 .pnpm-store
 artifacts
 coverage.out
