@@ -5,8 +5,9 @@ each inventory row represents one physical item. Both catalog composition and it
 ownership support nesting.
 
 The backend uses Go, Fiber, GORM, and PostgreSQL and serves only the JSON API.
-The inventory browser in `webui/` is a separate Next.js (App Router) app using
-React, TypeScript, Mantine, and Tabler icons. Its server components call the API
+The backoffice in `webui/` is a separate Next.js (App Router) app using React,
+TypeScript, Mantine, and Tabler icons. It is for staff managing parts, stock and
+BOMs; customer-facing browsing lives in another frontend. Its server components call the API
 through `PAPI_URL`, so the browser never talks to the Go server directly.
 
 ## Run locally

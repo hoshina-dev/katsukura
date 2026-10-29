@@ -2,15 +2,17 @@ import "@mantine/core/styles.css";
 import "@mantine/carousel/styles.css";
 import "./globals.css";
 
-import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
+import { ColorSchemeScript, Container, mantineHtmlProps } from "@mantine/core";
 import type { Metadata } from "next";
 import { ReactNode } from "react";
+
+import { AppHeader } from "@/components/backoffice/AppHeader";
 
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Inventory",
-  description: "Browse products, parts, and available stock",
+  title: "Inventory Manage Backoffice",
+  description: "Manage parts, stock, and bills of materials",
 };
 
 export default function RootLayout({
@@ -25,7 +27,10 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          <main>{children}</main>
+          <AppHeader />
+          <Container component="main" size={1280} py="lg" px="md">
+            {children}
+          </Container>
         </Providers>
       </body>
     </html>

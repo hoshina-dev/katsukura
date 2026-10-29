@@ -1,8 +1,88 @@
+:root {
+  --app-ground: #f3f3f0;
+  --app-line: #e2e2dd;
+  --app-meter-free: #d7ebe6;
+}
+
+body {
+  background: var(--app-ground);
+  color: #1b1e21;
+}
+
+::selection {
+  background: rgba(0, 124, 102, 0.2);
+}
+
+input,
+textarea {
+  caret-color: var(--mantine-color-signal-8);
+}
+
+table,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--app-line);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--app-line);
+}
+
 .catalog-card {
-  transition: border-color 120ms ease;
+  transition: border-color 150ms ease-out;
 }
 
 .catalog-card-link:hover .catalog-card,
 .catalog-card-link:focus-visible .catalog-card {
   border-color: var(--mantine-color-gray-5);
+}
+
+tr:hover .row-delete,
+.catalog-card-link:hover .row-delete,
+.row-delete:hover,
+.row-delete:focus-visible {
+  opacity: 1;
+}
+
+.row-delete {
+  opacity: 0.45;
+  transition: opacity 150ms ease-out;
+}
+
+.row-delete:hover {
+  color: var(--mantine-color-red-7);
+}
+
+.app-header {
+  background: linear-gradient(100deg, #e4f3ee 0%, #eef6f1 40%, #f7f5ec 100%);
+  border-bottom: 1px solid #d6e6e0;
+}
+
+.nav-link {
+  color: #4a5753;
+  text-decoration: none;
+  font-size: var(--mantine-font-size-sm);
+  padding: 4px 10px;
+  border-radius: var(--mantine-radius-sm);
+  border: 1px solid transparent;
+  transition:
+    color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+
+.nav-link:hover {
+  color: #14211e;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.nav-link[data-active] {
+  color: var(--mantine-color-signal-9);
+  background: #fff;
+  border-color: #cfe3dc;
+  font-weight: 500;
 }

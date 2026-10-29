@@ -64,12 +64,6 @@ export type ItemDetail = Item & {
   components: Installation[];
 };
 
-export type TreeNode = {
-  item: Item;
-  children: TreeNode[];
-  truncated?: boolean;
-};
-
 export type List<T> = {
   data: T[];
   total: number;
@@ -77,17 +71,9 @@ export type List<T> = {
   offset: number;
 };
 
-export type BomNode = {
-  id: string;
-  slot: string;
-  quantity: number;
-  part: Pick<Part, "id" | "sku" | "name">;
-  children: BomNode[];
-};
-
 // Catalog
 
-export const CATALOG_PAGE_SIZE = 6;
+export const CATALOG_PAGE_SIZE = 12;
 // Rows fetched per step by the scrolling list view
 export const LIST_PAGE_SIZE = 25;
 export const ITEMS_PAGE_SIZE = 20;
@@ -132,8 +118,12 @@ export function parseCatalogQuery(params: SearchParams): CatalogQuery {
 }
 
 export function parseCatalogView(params: SearchParams): CatalogView {
-  return param(params, "view") === "table" ? "table" : "grid";
+  return param(params, "view") === "grid" ? "grid" : "table";
 }
+
+// Part image uploads; the server action checks these again
+export const MAX_IMAGE_BYTES = 1024 * 1024;
+export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export function imageUrls(metadata: Metadata) {
   return (metadata.image_urls ?? []).filter(
@@ -141,13 +131,12 @@ export function imageUrls(metadata: Metadata) {
   );
 }
 
-// base is "/inventory" for browsing or "/backoffice" for editing
-export function skuHref(sku: string, base = "/inventory") {
-  return `${base}/${encodeURIComponent(sku)}`;
+export function skuHref(sku: string) {
+  return `/parts/${encodeURIComponent(sku)}`;
 }
 
-export function itemHref(sku: string, itemId: string, base = "/inventory") {
-  return `${skuHref(sku, base)}/items/${itemId}`;
+export function itemHref(sku: string, itemId: string) {
+  return `${skuHref(sku)}/items/${itemId}`;
 }
 
 export function serialLabel(item?: { serial_number: string | null }) {

@@ -53,8 +53,8 @@ describe("helpers", () => {
   });
 
   it("parses the view", () => {
-    expect(parseCatalogView({ view: "table" })).toBe("table");
-    expect(parseCatalogView({})).toBe("grid");
+    expect(parseCatalogView({ view: "grid" })).toBe("grid");
+    expect(parseCatalogView({})).toBe("table");
   });
 
   it("keeps non-empty image urls in order", () => {
@@ -66,8 +66,8 @@ describe("helpers", () => {
   });
 
   it("encodes SKUs in links", () => {
-    expect(skuHref("A/B 1")).toBe("/inventory/A%2FB%201");
-    expect(itemHref("A", "id")).toBe("/inventory/A/items/id");
+    expect(skuHref("A/B 1")).toBe("/parts/A%2FB%201");
+    expect(itemHref("A", "id")).toBe("/parts/A/items/id");
   });
 
   it("pluralizes units", () => {

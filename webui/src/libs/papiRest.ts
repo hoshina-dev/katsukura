@@ -3,7 +3,6 @@
 import "server-only";
 
 import {
-  type BomNode,
   CATALOG_PAGE_SIZE,
   type CatalogEntry,
   type CatalogQuery,
@@ -16,7 +15,6 @@ import {
   type Part,
   type PartComponent,
   type PartDetail,
-  type TreeNode,
 } from "./inventory";
 
 const API_URL = new URL(
@@ -123,17 +121,6 @@ export function archiveItem(id: string) {
   return send<unknown>("DELETE", `/inventory/${id}`);
 }
 
-export function getMetadataSchema() {
-  return get<{ properties?: Record<string, unknown> }>(
-    "/metadata/schema",
-    LOOKUP_TTL_SECONDS,
-  );
-}
-
-export function validateMetadata(metadata: Record<string, unknown>) {
-  return send<Metadata>("POST", "/metadata/validate", metadata);
-}
-
 export function getPart(id: string) {
   return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS, [
     partTag(id),
@@ -153,7 +140,7 @@ type ItemFilter = {
   limit?: number;
   offset?: number;
   search?: string;
-  // Only items not installed anywhere: the public stock
+  // Only items not installed anywhere
   available?: boolean;
 };
 
@@ -221,10 +208,6 @@ export function searchParts(search: string, limit = 20) {
   return get<List<Part>>(`/parts?${qs({ search, limit })}`);
 }
 
-export function getItemTree(id: string) {
-  return get<TreeNode>(`/inventory/${id}/tree?depth=20`);
-}
-
 // Catalog
 
 function toEntry(part: Part): CatalogEntry {
@@ -253,39 +236,4 @@ export async function getCatalog(
     })}`,
   );
   return { entries: list.data.map(toEntry), total: list.total };
-}
-
-// Bill of materials, resolved recursively. Each SKU is fetched once even when
-// it appears in several branches.
-export async function getBomTree(part: PartDetail, maxDepth = 10) {
-  const cache = new Map<string, Promise<PartDetail>>([
-    [part.id, Promise.resolve(part)],
-  ]);
-  const load = (id: string) => {
-    if (!cache.has(id)) cache.set(id, getPart(id));
-    return cache.get(id)!;
-  };
-
-  async function build(
-    detail: PartDetail,
-    path: Set<string>,
-  ): Promise<BomNode[]> {
-    return Promise.all(
-      detail.components.map(async (component) => {
-        const child = await load(component.child_part_id);
-        const canExpand = !path.has(child.id) && path.size < maxDepth;
-        return {
-          id: component.id,
-          slot: component.slot,
-          quantity: component.required_quantity,
-          part: { id: child.id, sku: child.sku, name: child.name },
-          children: canExpand
-            ? await build(child, new Set(path).add(child.id))
-            : [],
-        };
-      }),
-    );
-  }
-
-  return build(part, new Set([part.id]));
 }

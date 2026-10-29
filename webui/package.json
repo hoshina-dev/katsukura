@@ -9,9 +9,11 @@
     "build": "next build",
     "start": "next start --port 3000",
     "test": "vitest run",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "copy:country-locale": "node scripts/copy-country-locale.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1157.0",
     "@mantine/carousel": "^8.3.18",
     "@mantine/core": "^8.3.18",
     "@mantine/hooks": "^8.3.18",
@@ -19,9 +21,11 @@
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "geist": "^1.8.1",
+    "i18n-iso-countries": "^7.14.0",
     "next": "^16.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "react-image-crop": "^11.1.2",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
