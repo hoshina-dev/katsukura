@@ -5,18 +5,14 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/papi2/internal/models"
+	"github.com/hoshina-dev/papi2/schema"
 	"regexp"
 	"strings"
 	"testing"
 )
 
-// nullMetadata is metadata with every schema field present and null.
-func nullMetadata() map[string]any {
-	return map[string]any{"category": nil, "manufacturer": nil, "country_of_origin": nil, "notes": nil, "temperature_stage": nil, "image_urls": nil, "specification": nil}
-}
-
 func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
-	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": nullMetadata(), "archived_at": nil}
+	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": schema.WithDefaults(nil), "archived_at": nil}
 	if e := validatePatch(p, "serial_number location metadata archived_at"); e != nil {
 		t.Fatal(e)
 	}
@@ -32,6 +28,15 @@ func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
 	}
 	if b["required_quantity"] != 1 {
 		t.Fatal("quantity not converted")
+	}
+}
+func TestNewMetadataFillsDefaults(t *testing.T) {
+	m, e := NewMetadata(nil)
+	if e != nil || len(m) != 7 || m["notes"] != nil || m["specification"] == nil {
+		t.Fatalf("got %v %v", m, e)
+	}
+	if _, e = NewMetadata(map[string]any{"specification": nil}); e == nil {
+		t.Fatal("accepted null specification")
 	}
 }
 func TestInvalidPatch(t *testing.T) {
@@ -51,7 +56,7 @@ func TestDecodeObject(t *testing.T) {
 }
 func TestDecodeMetadataPreservesLargeInteger(t *testing.T) {
 	var m map[string]any
-	if e := DecodeObject([]byte(`{"metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":null}}`), &m); e != nil {
+	if e := DecodeObject([]byte(`{"metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":{}}}`), &m); e != nil {
 		t.Fatal(e)
 	}
 	if e := validatePatch(m, "metadata"); e != nil {

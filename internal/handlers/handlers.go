@@ -229,10 +229,11 @@ func (h *Handler) ValidateMetadata(c *fiber.Ctx) error {
 	if e := services.DecodeObject(c.Body(), &m); e != nil {
 		return e
 	}
-	if e := services.ValidateMetadata(m); e != nil {
+	full, e := services.NewMetadata(m)
+	if e != nil {
 		return e
 	}
-	return c.JSON(m)
+	return c.JSON(full)
 }
 func (h *Handler) CreatePart(c *fiber.Ctx) error {
 	v := new(models.Part)

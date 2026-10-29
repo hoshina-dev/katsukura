@@ -18,6 +18,7 @@ import (
 	"github.com/hoshina-dev/papi2/internal/repositories"
 	"github.com/hoshina-dev/papi2/internal/routes"
 	"github.com/hoshina-dev/papi2/internal/services"
+	"github.com/hoshina-dev/papi2/schema"
 )
 
 func realAPI(t *testing.T) *fiber.App {
@@ -175,7 +176,7 @@ func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	}
 	expectError(t, request(t, app, "DELETE", "/api/v1/inventory/"+itemID(free[0]), nil, 409), "constraint_violation", "active use")
 
-	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", object("notes", "kept")), 200)) != parent {
+	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", schema.WithDefaults(object("notes", "kept"))), 200)) != parent {
 		t.Fatal("item PATCH did not return updated entity")
 	}
 	detail = request(t, app, "GET", parentPath, nil, 200)

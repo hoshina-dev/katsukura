@@ -4,6 +4,7 @@ package schema
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -17,6 +18,22 @@ import (
 var MetadataJSON []byte
 
 var metadata = compile("metadata.schema.json", MetadataJSON)
+
+// defaults is the JSON object of every metadata field's "default".
+var defaults = func() []byte {
+	m := map[string]any{}
+	for key, p := range metadata.Properties {
+		if p.Default == nil {
+			panic("metadata.schema.json: " + key + " has no default")
+		}
+		m[key] = *p.Default
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}()
 
 func compile(name string, raw []byte) *jsonschema.Schema {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
@@ -45,6 +62,21 @@ func (e *Error) Error() string {
 		parts[i] = f.Field + ": " + f.Message
 	}
 	return "invalid metadata: " + strings.Join(parts, "; ")
+}
+
+// WithDefaults returns a copy of m with every missing field set to its schema
+// default; keys already in m, including nulls, are kept as given.
+func WithDefaults(m map[string]any) map[string]any {
+	out := map[string]any{}
+	dec := json.NewDecoder(bytes.NewReader(defaults))
+	dec.UseNumber()
+	if err := dec.Decode(&out); err != nil {
+		panic(err)
+	}
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // ValidateMetadata checks a decoded metadata object (map[string]any with

@@ -107,10 +107,8 @@ func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
 	p.Description = trimNullable(p.Description)
 	p.ID = uuid.New()
 	p.ArchivedAt = nil
-	if p.Metadata == nil {
-		p.Metadata = models.JSONMap{}
-	}
-	if e := ValidateMetadata(p.Metadata); e != nil {
+	var e error
+	if p.Metadata, e = NewMetadata(p.Metadata); e != nil {
 		return e
 	}
 	return s.write(ctx, func(r Store) error { return r.Create(ctx, p) })
@@ -123,10 +121,8 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 	i.Location = trimNullable(i.Location)
 	i.ID = uuid.New()
 	i.ArchivedAt = nil
-	if i.Metadata == nil {
-		i.Metadata = models.JSONMap{}
-	}
-	if e := ValidateMetadata(i.Metadata); e != nil {
+	var e error
+	if i.Metadata, e = NewMetadata(i.Metadata); e != nil {
 		return e
 	}
 	return s.write(ctx, func(r Store) error {
@@ -484,6 +480,13 @@ func (s *Service) readTree(ctx context.Context, id uuid.UUID, depth int) (*model
 	}
 	v, e := s.repo.Tree(ctx, id, depth)
 	return v, apperrors.Translate(e)
+}
+
+// NewMetadata fills fields missing from m with their schema defaults and
+// validates the result; it is the metadata a create stores.
+func NewMetadata(m map[string]any) (models.JSONMap, error) {
+	full := schema.WithDefaults(m)
+	return full, ValidateMetadata(full)
 }
 
 // ValidateMetadata checks metadata against schema/metadata.schema.json and

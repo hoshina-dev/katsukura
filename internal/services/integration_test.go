@@ -174,7 +174,7 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	if e = s.ArchiveItem(ctx, spare.ID); status(e) != 409 {
 		t.Fatalf("installed item archived: %v", e)
 	}
-	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"notes": "checked"}}))
+	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"category": nil, "manufacturer": nil, "country_of_origin": nil, "notes": "checked", "temperature_stage": nil, "image_urls": nil, "specification": map[string]any{}}}))
 	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": nil}))
 	detail, e = s.Item(ctx, parent.ID)
 	if e != nil || detail.Location != nil || detail.Metadata["notes"] != "checked" {
@@ -234,7 +234,7 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
-	}{{"GET", "/api/v1/parts?limit=1&offset=1", "", 200}, {"GET", "/api/v1/inventory/" + parent.ID.String(), "", 200}, {"PATCH", "/api/v1/inventory/" + wrong.ID.String(), `{"location":" HTTP shelf ","metadata":{"temperature_stage":9007199254740993}}`, 200}, {"POST", "/api/v1/inventory", `{"part_id":"` + uuid.New().String() + `"}`, 404}} {
+	}{{"GET", "/api/v1/parts?limit=1&offset=1", "", 200}, {"GET", "/api/v1/inventory/" + parent.ID.String(), "", 200}, {"PATCH", "/api/v1/inventory/" + wrong.ID.String(), `{"location":" HTTP shelf ","metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":{}}}`, 200}, {"POST", "/api/v1/inventory", `{"part_id":"` + uuid.New().String() + `"}`, 404}} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
 		res, e := app.Test(req, 10000)

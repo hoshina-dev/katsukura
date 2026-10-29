@@ -81,24 +81,27 @@ history. Tree queries limit response depth without limiting stored nesting.
 
 `metadata` on parts and inventory items is validated against one shared JSON Schema,
 [`schema/metadata.schema.json`](schema/metadata.schema.json) (draft 2020-12), which is
-embedded in the binary and checked on every create and PATCH. The shape is fixed: every
-field is required and nullable, and unknown keys are rejected.
+embedded in the binary and checked on every create and PATCH. The shape is fixed:
+every field is required, and unknown keys are rejected.
 
-| Field | Type |
-|---|---|
-| `category` | list of strings or null |
-| `manufacturer` | string or null |
-| `country_of_origin` | string or null |
-| `notes` | string or null |
-| `temperature_stage` | number or null |
-| `image_urls` | list of strings or null; shown as a carousel in the UI |
-| `specification` | object of string values or null; a free-form spec table (e.g. `{"Width": "60 cm"}`) |
+| Field | Type | Default |
+|---|---|---|
+| `category` | list of strings or null | null |
+| `manufacturer` | string or null | null |
+| `country_of_origin` | string or null | null |
+| `notes` | string or null | null |
+| `temperature_stage` | number or null | null |
+| `image_urls` | list of strings or null; shown as a carousel in the UI | null |
+| `specification` | object of string values; a free-form spec table such as `{"Width": "60 cm"}` | `{}` |
 
-A null or empty value is simply not shown. Send every key, using null for unknown
-values; a missing key is reported as `required`. To add a field, add it to `properties`
-and `required`. The UI reads the keys from `GET /metadata/schema`, so adding a field
-needs no frontend change. The database only checks that metadata is an object, so
-direct SQL writes must follow the schema themselves.
+On create, fields left out get their schema `default`. A PATCH replaces the whole
+object, so it must send every field; a missing one is reported as `required`. Null or
+empty values are not shown. To add a field, add it to `properties` and `required` with a
+`default`, plus a migration that backfills existing rows and the column default (see
+[`sql/003_metadata_defaults.sql`](sql/003_metadata_defaults.sql)). The UI reads the keys
+and defaults from `GET /metadata/schema`, so adding a field needs no frontend change.
+The database only checks that metadata is an object, so direct SQL writes must follow
+the schema themselves.
 
 Mock data sets live in `sql_mock/` and are applied by hand to a migrated database. Each
 file is one transaction and can be re-run safely.
@@ -108,10 +111,11 @@ file is one transaction and can be re-run safely.
 psql "$DATA_SOURCE_NAME" -f sql_mock/900_rf_parts.sql
 # RF composites built from those parts (needs 900 first)
 psql "$DATA_SOURCE_NAME" -f sql_mock/901_rf_composites.sql
+# RF metadata filled to the fixed schema shape (needs 901 first)
+psql "$DATA_SOURCE_NAME" -f sql_mock/902_rf_metadata_defaults.sql
 
-# IKEA-style assemblies; 901 converts their older metadata to the schema
+# IKEA-style assemblies (legacy data set)
 psql "$DATA_SOURCE_NAME" -f sql_mock/ikea/900_schematics_inventory.sql
-psql "$DATA_SOURCE_NAME" -f sql_mock/ikea/901_metadata_schema.sql
 ```
 
 ## API
@@ -133,7 +137,7 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/inventory/:id/tree` | Read a nested tree with bounded depth |
 | `/summary` | Active SKU/item and ownership counts |
 | `/metadata/schema` | GET the metadata JSON Schema |
-| `/metadata/validate` | POST metadata; returns it if it matches the schema, else 400 |
+| `/metadata/validate` | POST metadata; returns it with defaults filled in, as a create would store it, or 400 |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
 `part_id` and `available=true` (not installed anywhere; this is public stock). Parts

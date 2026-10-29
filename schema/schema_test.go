@@ -18,17 +18,24 @@ func decode(t *testing.T, s string) map[string]any {
 	return m
 }
 
-// empty is metadata with every field present and null.
-const empty = `{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":null,"image_urls":null,"specification":null}`
-
-// with returns empty with the given fields overridden, e.g. with(`"notes":1`).
+// with returns the schema defaults overridden by fields, e.g. with(t, `"notes":1`).
 func with(t *testing.T, fields string) map[string]any {
 	t.Helper()
-	m := decode(t, empty)
-	for k, v := range decode(t, "{"+fields+"}") {
-		m[k] = v
+	return WithDefaults(decode(t, "{"+fields+"}"))
+}
+
+func TestWithDefaults(t *testing.T) {
+	m := WithDefaults(map[string]any{"notes": "kept", "manufacturer": nil})
+	if err := ValidateMetadata(m); err != nil {
+		t.Fatal(err)
 	}
-	return m
+	if m["notes"] != "kept" || m["manufacturer"] != nil || len(m) != len(metadata.Properties) {
+		t.Fatalf("got %v", m)
+	}
+	m["specification"].(map[string]any)["Width"] = "60 cm"
+	if spec := WithDefaults(nil)["specification"].(map[string]any); len(spec) != 0 {
+		t.Fatalf("default shared between calls: %v", spec)
+	}
 }
 
 func TestValidMetadata(t *testing.T) {
@@ -53,9 +60,10 @@ func TestInvalidMetadataFields(t *testing.T) {
 		`"image_urls":[null]`:            {"image_urls", "item 0: got null, want string"},
 		`"manufacturer":3`:               {"manufacturer", "got number, want null or string"},
 		`"temperature_stage":"20"`:       {"temperature_stage", "got string, want null or number"},
-		`"specification":[]`:             {"specification", "got array, want null or object"},
+		`"specification":[]`:             {"specification", "got array, want object"},
 		`"specification":{"Width":60}`:   {"specification", "item Width: got number, want string"},
 		`"specification":{"Width":null}`: {"specification", "item Width: got null, want string"},
+		`"specification":null`:           {"specification", "got null, want object"},
 	} {
 		var e *Error
 		if err := ValidateMetadata(with(t, s)); !errors.As(err, &e) || len(e.Fields) != 1 || e.Fields[0] != want {
