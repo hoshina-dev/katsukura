@@ -83,9 +83,9 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	}
 
 	// A composite is built from stock, all or nothing
-	_, e = s.CreateItems(ctx, childPart.ID, 3)
+	_, e = s.CreateItems(ctx, childPart.ID, 3, nil)
 	must(e)
-	if _, e = s.CreateItems(ctx, parentPart.ID, 2); status(e) != 409 || !strings.Contains(e.Error(), "need 4, have 3") {
+	if _, e = s.CreateItems(ctx, parentPart.ID, 2, nil); status(e) != 409 || !strings.Contains(e.Error(), "need 4, have 3") {
 		t.Fatalf("short stock: %v", e)
 	}
 	if page, _ := s.Items(ctx, models.Filter{PartID: &parentPart.ID, Limit: 1}); page.Total != 0 {
@@ -100,7 +100,7 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	}
 
 	// Two builds race for the last two children: exactly one wins
-	_, e = s.CreateItems(ctx, childPart.ID, 1)
+	_, e = s.CreateItems(ctx, childPart.ID, 1, nil)
 	must(e)
 	errs := make([]error, 2)
 	var wg sync.WaitGroup
@@ -192,10 +192,9 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	if e = s.ArchiveItem(ctx, spare.ID); status(e) != 409 {
 		t.Fatalf("installed item archived: %v", e)
 	}
-	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": " Shelf ", "metadata": map[string]any{"category": nil, "manufacturer": nil, "country_of_origin": nil, "notes": "checked", "temperature_stage": nil, "image_urls": nil, "specification": map[string]any{}}}))
-	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"location": nil}))
+	must(patch(s.UpdateItem)(ctx, parent.ID, map[string]any{"metadata": map[string]any{"category": nil, "manufacturer": nil, "country_of_origin": nil, "notes": "checked", "temperature_stage": nil, "image_urls": nil, "specification": map[string]any{}}}))
 	detail, e = s.Item(ctx, parent.ID)
-	if e != nil || detail.Location != nil || detail.Metadata["notes"] != "checked" {
+	if e != nil || detail.Metadata["notes"] != "checked" {
 		t.Fatalf("patch incorrect: %+v %v", detail, e)
 	}
 
@@ -262,7 +261,7 @@ func TestInventoryLifecycleAndConcurrentBuilds(t *testing.T) {
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
-	}{{"GET", "/api/v1/parts?limit=1&offset=1", "", 200}, {"GET", "/api/v1/inventory/" + parent.ID.String(), "", 200}, {"PATCH", "/api/v1/inventory/" + wrong.ID.String(), `{"location":" HTTP shelf ","metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":{}}}`, 200}, {"POST", "/api/v1/inventory", `{"part_id":"` + uuid.New().String() + `"}`, 404}} {
+	}{{"GET", "/api/v1/parts?limit=1&offset=1", "", 200}, {"GET", "/api/v1/inventory/" + parent.ID.String(), "", 200}, {"PATCH", "/api/v1/inventory/" + wrong.ID.String(), `{"metadata":{"category":null,"manufacturer":null,"country_of_origin":null,"notes":null,"temperature_stage":9007199254740993,"image_urls":null,"specification":{}}}`, 200}, {"POST", "/api/v1/inventory", `{"part_id":"` + uuid.New().String() + `"}`, 404}} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
 		res, e := app.Test(req, 10000)
@@ -426,14 +425,14 @@ func TestGeneratedSKUAndItemBatch(t *testing.T) {
 		t.Fatalf("generated SKU %q", part.SKU)
 	}
 	for _, count := range []int{0, services.MaxNewItems + 1} {
-		if _, e = s.CreateItems(ctx, part.ID, count); e == nil {
+		if _, e = s.CreateItems(ctx, part.ID, count, nil); e == nil {
 			t.Fatalf("count %d accepted", count)
 		}
 	}
-	if _, e = s.CreateItems(ctx, uuid.New(), 1); e == nil {
+	if _, e = s.CreateItems(ctx, uuid.New(), 1, nil); e == nil {
 		t.Fatal("items created for a missing part")
 	}
-	items, e := s.CreateItems(ctx, part.ID, 3)
+	items, e := s.CreateItems(ctx, part.ID, 3, nil)
 	if e != nil || len(items) != 3 {
 		t.Fatalf("batch: %v %d", e, len(items))
 	}
@@ -502,7 +501,7 @@ func TestPartSortOrders(t *testing.T) {
 		name  string
 		count int
 	}{{"cable", 3}, {"bolt", 2}, {"Axle", 1}} {
-		if _, e = s.CreateItems(ctx, parts[stock.name].ID, stock.count); e != nil {
+		if _, e = s.CreateItems(ctx, parts[stock.name].ID, stock.count, nil); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -585,9 +584,9 @@ func TestArchivePartTakesItsItems(t *testing.T) {
 	must(s.CreatePart(ctx, box))
 	must(s.CreatePart(ctx, leg))
 	must(s.CreateComponent(ctx, box.ID, &models.PartComponent{ChildPartID: leg.ID, Slot: "leg", RequiredQuantity: 2}))
-	_, e = s.CreateItems(ctx, leg.ID, 5)
+	_, e = s.CreateItems(ctx, leg.ID, 5, nil)
 	must(e)
-	_, e = s.CreateItems(ctx, box.ID, 2)
+	_, e = s.CreateItems(ctx, box.ID, 2, nil)
 	must(e)
 
 	// Leg units sit inside boxes and Leg is in Box's BOM: nothing changes

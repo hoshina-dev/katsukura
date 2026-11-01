@@ -75,7 +75,6 @@ type InventoryItem struct {
 	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
 	PartID       uuid.UUID  `json:"part_id"`
 	SerialNumber *string    `json:"serial_number"`
-	Location     *string    `json:"location"`
 	Metadata     JSONMap    `json:"metadata" gorm:"type:jsonb"`
 	ArchivedAt   *time.Time `json:"archived_at"`
 	CreatedAt    time.Time  `json:"created_at"`

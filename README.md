@@ -33,8 +33,9 @@ The UI reads `PAPI_URL` (default `http://localhost:8082`) on the server side.
 - `parts`: one schema per unique SKU, with JSONB object metadata. When `sku` is
   omitted on create, the API generates `RF-` plus 8 random hex digits.
 - `part_components`: parent SKU, child SKU, named slot, and exact quantity.
-- `inventory_items`: one physical unit, nullable serial number, string location,
-  and JSONB object metadata. Non-null serial numbers are unique within a SKU.
+- `inventory_items`: one physical unit, nullable serial number, and JSONB object
+  metadata. Non-null serial numbers are unique within a SKU and
+  are set only on create; PATCH rejects `serial_number`.
 - `item_components`: installed child items and removal history. A child has only
   one active parent, and its SKU must match the selected BOM slot.
 
@@ -130,7 +131,7 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts) |
 | `/parts/:id` | Read with BOM and `stock`, edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
-| `/parts/:id/items` | POST `{count}` (1–1000) to build items in one transaction, each with a generated `RF-SN-` serial number, a copy of the part's metadata, and its BOM filled from stock |
+| `/parts/:id/items` | POST `{count, serial_numbers?}` (1–1000) to build items in one transaction, each with a copy of the part's metadata and its BOM filled from stock; `serial_numbers` has one entry per item, and a blank or missing entry gets a generated `RF-SN-` serial number |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
 | `/inventory` | List/search/filter/paginate and create physical items; an installed item has `parent`, its active installation with `parent_item` |
 | `/inventory/:id` | Read ownership/history, edit, archive, restore |

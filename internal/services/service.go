@@ -155,7 +155,6 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 		return apperrors.Invalid("part_id is required")
 	}
 	i.SerialNumber = trimNullable(i.SerialNumber)
-	i.Location = trimNullable(i.Location)
 	i.ID = uuid.New()
 	i.ArchivedAt = nil
 	var e error
@@ -170,11 +169,15 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 	})
 }
 
-// CreateItems adds count items of one part in a single transaction. Each item
-// gets a generated serial number and a copy of the part's metadata.
-func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int) ([]models.InventoryItem, error) {
+// CreateItems adds count items of one part in a single transaction, each with
+// a copy of the part's metadata. serials is empty or has one entry per item;
+// a blank entry gets a generated serial number.
+func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int, serials []string) ([]models.InventoryItem, error) {
 	if count < 1 || count > MaxNewItems {
 		return nil, apperrors.Invalid(fmt.Sprintf("count must be between 1 and %d", MaxNewItems))
+	}
+	if len(serials) > 0 && len(serials) != count {
+		return nil, apperrors.Invalid("serial_numbers must have one entry per item")
 	}
 	items := make([]*models.InventoryItem, count)
 	e := s.write(ctx, func(r Store) error {
@@ -184,6 +187,9 @@ func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int) 
 		}
 		for i := range items {
 			serial := newSerialNumber()
+			if i < len(serials) && strings.TrimSpace(serials[i]) != "" {
+				serial = strings.TrimSpace(serials[i])
+			}
 			items[i] = &models.InventoryItem{ID: uuid.New(), PartID: partID, SerialNumber: &serial, Metadata: p.Metadata}
 		}
 		return build(ctx, r, partID, items)
@@ -390,7 +396,7 @@ func (s *Service) UpdatePart(ctx context.Context, id uuid.UUID, p map[string]any
 	return
 }
 func (s *Service) UpdateItem(ctx context.Context, id uuid.UUID, p map[string]any) (v *models.InventoryItem, e error) {
-	if e = validatePatch(p, "serial_number location metadata archived_at"); e != nil {
+	if e = validatePatch(p, "metadata archived_at"); e != nil {
 		return
 	}
 	e = s.write(ctx, func(r Store) error {
@@ -482,7 +488,7 @@ func validatePatch(p map[string]any, allowed string) error {
 				return apperrors.Invalid("required_quantity must be a positive integer")
 			}
 			p[k] = int(n)
-		case "description", "serial_number", "location":
+		case "description", "serial_number":
 			if v == nil {
 				continue
 			}

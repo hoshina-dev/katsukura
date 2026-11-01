@@ -116,7 +116,7 @@ func TestDirectSQLInvariants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec("UPDATE inventory_items SET location='x' WHERE id=$1", parent)
+	_, err = tx.Exec("UPDATE inventory_items SET metadata=metadata WHERE id=$1", parent)
 	expectCode(t, err, "23514")
 	tx.Rollback()
 }

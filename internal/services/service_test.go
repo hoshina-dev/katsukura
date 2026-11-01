@@ -12,11 +12,11 @@ import (
 )
 
 func TestPatchPreservesNullFalseAndZeroRules(t *testing.T) {
-	p := map[string]any{"serial_number": nil, "location": "  ", "metadata": schema.WithDefaults(nil), "archived_at": nil}
-	if e := validatePatch(p, "serial_number location metadata archived_at"); e != nil {
+	p := map[string]any{"serial_number": nil, "description": "  ", "metadata": schema.WithDefaults(nil), "archived_at": nil}
+	if e := validatePatch(p, "serial_number description metadata archived_at"); e != nil {
 		t.Fatal(e)
 	}
-	if p["location"] != nil || p["serial_number"] != nil {
+	if p["description"] != nil || p["serial_number"] != nil {
 		t.Fatal("nullable fields not cleared")
 	}
 	if _, ok := p["metadata"].(models.JSONMap); !ok {

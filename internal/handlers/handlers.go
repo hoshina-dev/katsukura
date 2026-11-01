@@ -26,7 +26,7 @@ type API interface {
 	Components(context.Context, uuid.UUID) ([]models.PartComponent, error)
 	CreatePart(context.Context, *models.Part) error
 	CreateItem(context.Context, *models.InventoryItem) error
-	CreateItems(context.Context, uuid.UUID, int) ([]models.InventoryItem, error)
+	CreateItems(context.Context, uuid.UUID, int, []string) ([]models.InventoryItem, error)
 	CreateComponent(context.Context, uuid.UUID, *models.PartComponent) error
 	Replace(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*models.ItemComponent, error)
 	DeleteComponent(context.Context, uuid.UUID, uuid.UUID) error
@@ -217,7 +217,7 @@ func (h *Handler) CreatePart(c *fiber.Ctx) error {
 }
 func (h *Handler) CreateItem(c *fiber.Ctx) error {
 	v := new(models.InventoryItem)
-	if e := body(c, v, "part_id", "serial_number", "location", "metadata"); e != nil {
+	if e := body(c, v, "part_id", "serial_number", "metadata"); e != nil {
 		return e
 	}
 	return reply(c, 201, v, h.api.CreateItem(c.UserContext(), v))
@@ -228,12 +228,13 @@ func (h *Handler) CreateItems(c *fiber.Ctx) error {
 		return e
 	}
 	var v struct {
-		Count int `json:"count"`
+		Count         int      `json:"count"`
+		SerialNumbers []string `json:"serial_numbers"`
 	}
-	if e := body(c, &v, "count"); e != nil {
+	if e := body(c, &v, "count", "serial_numbers"); e != nil {
 		return e
 	}
-	items, e := h.api.CreateItems(c.UserContext(), i, v.Count)
+	items, e := h.api.CreateItems(c.UserContext(), i, v.Count, v.SerialNumbers)
 	return reply(c, 201, fiber.Map{"data": items}, e)
 }
 func (h *Handler) CreateComponent(c *fiber.Ctx) error {

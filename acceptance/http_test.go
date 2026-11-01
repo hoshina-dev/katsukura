@@ -138,7 +138,7 @@ func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	componentPath := "/api/v1/parts/" + parentPart + "/components"
 	request(t, app, "POST", componentPath, object("child_part_id", childPart, "slot", "left", "required_quantity", 2, "is_optional", true), 400)
 	slot := id(t, request(t, app, "POST", componentPath, object("child_part_id", childPart, "slot", "left", "required_quantity", 2), 201))
-	newParent := object("part_id", parentPart, "location", "Shelf", "serial_number", "P-1")
+	newParent := object("part_id", parentPart, "serial_number", "P-1")
 	expectError(t, request(t, app, "POST", "/api/v1/inventory", newParent, 409), "conflict", "need 2, have 0")
 	stock := func(p string, n int) []any {
 		return request(t, app, "POST", "/api/v1/parts/"+p+"/items", object("count", n), 201)["data"].([]any)
@@ -176,11 +176,11 @@ func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	}
 	expectError(t, request(t, app, "DELETE", "/api/v1/inventory/"+itemID(free[0]), nil, 409), "constraint_violation", "active use")
 
-	if id(t, request(t, app, "PATCH", parentPath, object("location", nil, "serial_number", nil, "metadata", schema.WithDefaults(object("notes", "kept"))), 200)) != parent {
+	if id(t, request(t, app, "PATCH", parentPath, object("metadata", schema.WithDefaults(object("notes", "kept"))), 200)) != parent {
 		t.Fatal("item PATCH did not return updated entity")
 	}
 	detail = request(t, app, "GET", parentPath, nil, 200)
-	if detail["location"] != nil || detail["serial_number"] != nil || detail["metadata"].(map[string]any)["notes"] != "kept" {
+	if detail["serial_number"] != "P-1" || detail["metadata"].(map[string]any)["notes"] != "kept" {
 		t.Fatalf("nullable fields or metadata: %+v", detail)
 	}
 	if len(detail["components"].([]any)) != 2 || len(detail["history"].([]any)) != 1 {
