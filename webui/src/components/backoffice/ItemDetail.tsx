@@ -67,20 +67,6 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
       />
 
       <Grid gutter="md">
-        <GridCol span={{ base: 12, lg: 8 }}>
-          {part.components.length > 0 ? (
-            <InstalledComponents
-              parentItemId={item.id}
-              slots={part.components}
-              installations={item.components}
-            />
-          ) : (
-            <Text size="sm" c="dimmed" className="panel" p="md">
-              {part.name} has no bill of materials, so this item holds no
-              components.
-            </Text>
-          )}
-        </GridCol>
         <GridCol span={{ base: 12, lg: 4 }}>
           <Stack gap="md">
             {images.length > 0 && (
@@ -99,6 +85,20 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
               save={saveItem.bind(null, item.id)}
             />
           </Stack>
+        </GridCol>
+        <GridCol span={{ base: 12, lg: 8 }}>
+          {part.components.length > 0 ? (
+            <InstalledComponents
+              parentItemId={item.id}
+              slots={part.components}
+              installations={item.components}
+            />
+          ) : (
+            <Text size="sm" c="dimmed" className="panel" p="md">
+              {part.name} has no bill of materials, so this item holds no
+              components.
+            </Text>
+          )}
         </GridCol>
       </Grid>
     </Stack>

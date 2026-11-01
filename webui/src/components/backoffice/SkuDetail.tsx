@@ -49,19 +49,6 @@ export async function SkuDetail({
       />
 
       <Grid gutter="md">
-        <GridCol span={{ base: 12, lg: 8 }}>
-          <Stack gap="md">
-            <InventoryInstances
-              key={page}
-              partId={part.id}
-              sku={part.sku}
-              items={items.data}
-              total={items.total}
-              page={page}
-            />
-            <BomSection partId={part.id} components={part.components} />
-          </Stack>
-        </GridCol>
         <GridCol span={{ base: 12, lg: 4 }}>
           <Stack gap="md">
             {images.length > 0 && (
@@ -81,6 +68,19 @@ export async function SkuDetail({
               metadata={part.metadata}
               save={savePart.bind(null, part.id)}
             />
+          </Stack>
+        </GridCol>
+        <GridCol span={{ base: 12, lg: 8 }}>
+          <Stack gap="md">
+            <InventoryInstances
+              key={page}
+              partId={part.id}
+              sku={part.sku}
+              items={items.data}
+              total={items.total}
+              page={page}
+            />
+            <BomSection partId={part.id} components={part.components} />
           </Stack>
         </GridCol>
       </Grid>
