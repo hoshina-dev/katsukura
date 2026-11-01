@@ -11,18 +11,18 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: papi2
-          POSTGRES_PASSWORD: papi2
-          POSTGRES_DB: papi2
+          POSTGRES_USER: katsukura
+          POSTGRES_PASSWORD: katsukura
+          POSTGRES_DB: katsukura
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U papi2 -d papi2"
+          --health-cmd "pg_isready -U katsukura -d katsukura"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      TEST_DATABASE_URL: postgres://papi2:papi2@localhost:5432/papi2?sslmode=disable
+      TEST_DATABASE_URL: postgres://katsukura:katsukura@localhost:5432/katsukura?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

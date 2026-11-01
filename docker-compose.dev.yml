@@ -2,18 +2,18 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: papi2
-      POSTGRES_PASSWORD: papi2
-      POSTGRES_DB: papi2
+      POSTGRES_USER: katsukura
+      POSTGRES_PASSWORD: katsukura
+      POSTGRES_DB: katsukura
     ports:
       - "127.0.0.1:5438:5432"
     volumes:
-      - papi2-postgres:/var/lib/postgresql/data
+      - katsukura-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U papi2 -d papi2"]
+      test: ["CMD-SHELL", "pg_isready -U katsukura -d katsukura"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  papi2-postgres:
+  katsukura-postgres:

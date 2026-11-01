@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { saveItem } from "@/app/actions";
 import { imageUrls, itemHref, serialLabel, skuHref } from "@/libs/inventory";
-import { getItem, getPart, isMissing } from "@/libs/papiRest";
+import { getItem, getPart, isMissing } from "@/libs/katsukuraApi";
 
 import { DetailsEditor } from "./DetailsEditor";
 import { InstalledComponents } from "./InstalledComponents";

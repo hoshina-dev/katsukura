@@ -9,7 +9,7 @@ import {
   pageParam,
   type SearchParams,
 } from "@/libs/inventory";
-import { findPartBySku, listItems } from "@/libs/papiRest";
+import { findPartBySku, listItems } from "@/libs/katsukuraApi";
 
 import { BomSection } from "./BomSection";
 import { DetailsEditor } from "./DetailsEditor";

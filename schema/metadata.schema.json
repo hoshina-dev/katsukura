@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hoshina-dev/papi2/schema/metadata.schema.json",
+  "$id": "https://github.com/hoshina-dev/katsukura/schema/metadata.schema.json",
   "title": "Metadata",
   "description": "Shared metadata for parts (SKU schemas) and inventory items. The shape is fixed: every field is required, and a field left out on create gets its \"default\". Null or empty values are not displayed. Unknown fields are rejected.",
   "type": "object",

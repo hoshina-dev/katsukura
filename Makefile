@@ -26,7 +26,7 @@ webui-test: webui-install
 
 build:
 	mkdir -p bin
-	go build -o bin/papi2 ./cmd/server
+	go build -o bin/katsukura ./cmd/server
 
 test:
 	go test -race -count=1 ./...
@@ -40,5 +40,5 @@ lint:
 	go vet ./...
 
 docker-build:
-	docker build -t papi2:local .
-	docker build -t papi2-webui:local webui
+	docker build -t katsukura:local .
+	docker build -t katsukura-webui:local webui

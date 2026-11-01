@@ -12,7 +12,7 @@ export default function PageError({ reset }: { reset: () => void }) {
       <Title order={1}>This page failed to load</Title>
       <Text c="dimmed" size="sm">
         The parts API returned an error or could not be reached. Check that the
-        papi2 server is running, then try again.
+        katsukura server is running, then try again.
       </Text>
       <Button
         variant="default"

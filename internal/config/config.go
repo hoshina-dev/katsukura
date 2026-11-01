@@ -17,7 +17,7 @@ type Config struct {
 func Load(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Port:            8082,
-		DataSourceName:  "postgres://papi2:papi2@localhost:5438/papi2?sslmode=disable",
+		DataSourceName:  "postgres://katsukura:katsukura@localhost:5438/katsukura?sslmode=disable",
 		Migrate:         true,
 		ShutdownTimeout: 10 * time.Second,
 	}

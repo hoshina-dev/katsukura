@@ -1,4 +1,4 @@
-// Shared PAPI REST types and helpers (safe to import from client components)
+// Shared Katsukura REST types and helpers (safe to import from client components)
 
 // Metadata keys and types are defined by the API's schema
 // (GET /metadata/schema); the UI only reads image_urls itself

@@ -12,11 +12,11 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/hoshina-dev/papi2/internal/config"
-	"github.com/hoshina-dev/papi2/internal/database"
-	"github.com/hoshina-dev/papi2/internal/repositories"
-	"github.com/hoshina-dev/papi2/internal/routes"
-	"github.com/hoshina-dev/papi2/internal/services"
+	"github.com/hoshina-dev/katsukura/internal/config"
+	"github.com/hoshina-dev/katsukura/internal/database"
+	"github.com/hoshina-dev/katsukura/internal/repositories"
+	"github.com/hoshina-dev/katsukura/internal/routes"
+	"github.com/hoshina-dev/katsukura/internal/services"
 )
 
 func main() {

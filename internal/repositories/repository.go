@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"github.com/google/uuid"
-	"github.com/hoshina-dev/papi2/internal/models"
-	"github.com/hoshina-dev/papi2/internal/services"
+	"github.com/hoshina-dev/katsukura/internal/models"
+	"github.com/hoshina-dev/katsukura/internal/services"
 	"gorm.io/gorm"
 	"strings"
 )

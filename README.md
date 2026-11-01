@@ -1,4 +1,4 @@
-# papi2
+# katsukura
 
 Part catalog and physical inventory management. A Part schema is identified by SKU;
 each inventory row represents one physical item. Both catalog composition and item
@@ -8,7 +8,7 @@ The backend uses Go, Fiber, GORM, and PostgreSQL and serves only the JSON API.
 The backoffice in `webui/` is a separate Next.js (App Router) app using React,
 TypeScript, Mantine, and Tabler icons. It is for staff managing parts, stock and
 BOMs; customer-facing browsing lives in another frontend. Its server components call the API
-through `PAPI_URL`, so the browser never talks to the Go server directly.
+through `KATSUKURA_API_URL`, so the browser never talks to the Go server directly.
 
 ## Run locally
 
@@ -24,9 +24,9 @@ make webui-dev    # UI on http://localhost:3000 (second terminal)
 
 The server applies versioned SQL migrations at startup. The development database
 uses port 5438 to avoid the usual local PostgreSQL port. `make build` produces
-`bin/papi2`; `make webui-start` builds and serves the production UI.
+`bin/katsukura`; `make webui-start` builds and serves the production UI.
 
-The UI reads `PAPI_URL` (default `http://localhost:8082`) on the server side.
+The UI reads `KATSUKURA_API_URL` (default `http://localhost:8082`) on the server side.
 
 ## Data rules
 
@@ -172,10 +172,10 @@ make webui-test
 For PostgreSQL integration tests, use a test database whose user may create schemas:
 
 ```sh
-TEST_DATABASE_URL=postgres://papi2:papi2@localhost:5438/papi2?sslmode=disable make test-integration
+TEST_DATABASE_URL=postgres://katsukura:katsukura@localhost:5438/katsukura?sslmode=disable make test-integration
 ```
 
 Integration suites use isolated schemas and exercise database invariants and HTTP
 workflows. CI runs them against PostgreSQL. `make docker-build` builds the API image
-(`papi2:local`) and the standalone Next.js UI image (`papi2-webui:local`); run the
-UI container with `PAPI_URL` pointing at the API.
+(`katsukura:local`) and the standalone Next.js UI image (`katsukura-webui:local`); run the
+UI container with `KATSUKURA_API_URL` pointing at the API.

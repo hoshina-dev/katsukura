@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/hoshina-dev/papi2/internal/handlers"
+	"github.com/hoshina-dev/katsukura/internal/handlers"
 	"time"
 )
 

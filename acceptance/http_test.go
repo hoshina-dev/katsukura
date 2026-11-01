@@ -14,11 +14,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/hoshina-dev/papi2/internal/database"
-	"github.com/hoshina-dev/papi2/internal/repositories"
-	"github.com/hoshina-dev/papi2/internal/routes"
-	"github.com/hoshina-dev/papi2/internal/services"
-	"github.com/hoshina-dev/papi2/schema"
+	"github.com/hoshina-dev/katsukura/internal/database"
+	"github.com/hoshina-dev/katsukura/internal/repositories"
+	"github.com/hoshina-dev/katsukura/internal/routes"
+	"github.com/hoshina-dev/katsukura/internal/services"
+	"github.com/hoshina-dev/katsukura/schema"
 )
 
 func realAPI(t *testing.T) *fiber.App {

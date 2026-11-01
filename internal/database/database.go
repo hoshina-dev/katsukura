@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	migrations "github.com/hoshina-dev/papi2/sql"
+	migrations "github.com/hoshina-dev/katsukura/sql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )

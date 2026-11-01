@@ -1,4 +1,4 @@
-module github.com/hoshina-dev/papi2
+module github.com/hoshina-dev/katsukura
 
 go 1.26.2
 

@@ -23,14 +23,14 @@ import {
   type NewComponent,
   ITEMS_TAG,
   type NewPart,
-  PapiError,
+  ApiError,
   partTag,
   replaceComponent,
   searchParts,
   updateComponent,
   updateItem,
   updatePart,
-} from "@/libs/papiRest";
+} from "@/libs/katsukuraApi";
 import { uploadImage } from "@/libs/s3Client";
 
 export type SubmitResult = {
@@ -44,7 +44,7 @@ export type SubmitResult = {
 const BATCH_SIZE = 10;
 
 function toResult(error: unknown): SubmitResult {
-  if (!(error instanceof PapiError)) throw error;
+  if (!(error instanceof ApiError)) throw error;
   if (error.details.length === 0) return { error: error.message };
   const fields: Record<string, string> = {};
   for (const { field, message } of error.details) {
@@ -66,7 +66,7 @@ async function inBatches<T>(
     );
     for (const result of results) {
       if (result.status === "rejected") {
-        if (!(result.reason instanceof PapiError)) throw result.reason;
+        if (!(result.reason instanceof ApiError)) throw result.reason;
         failures.push(result.reason.message);
       }
     }

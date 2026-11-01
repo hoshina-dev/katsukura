@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"github.com/google/uuid"
-	"github.com/hoshina-dev/papi2/internal/models"
+	"github.com/hoshina-dev/katsukura/internal/models"
 )
 
 type Store interface {

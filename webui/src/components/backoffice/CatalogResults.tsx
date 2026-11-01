@@ -13,7 +13,7 @@ import {
   type SearchParams,
   skuHref,
 } from "@/libs/inventory";
-import { getCatalog } from "@/libs/papiRest";
+import { getCatalog } from "@/libs/katsukuraApi";
 
 import { CatalogToolbar } from "./CatalogControls";
 import { CatalogTable } from "./CatalogTable";

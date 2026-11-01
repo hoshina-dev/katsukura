@@ -1,4 +1,4 @@
-// PAPI REST client, only used in server components and server actions
+// Katsukura REST client, only used in server components and server actions
 
 import "server-only";
 
@@ -19,7 +19,7 @@ import {
 
 const API_URL = new URL(
   "/api/v1",
-  process.env.PAPI_URL || "http://localhost:8082",
+  process.env.KATSUKURA_API_URL || "http://localhost:8082",
 ).href;
 
 // Short cache for lookups that are repeated across catalog pages
@@ -27,7 +27,7 @@ const LOOKUP_TTL_SECONDS = 30;
 
 export type ErrorDetail = { field: string; message: string };
 
-export class PapiError extends Error {
+export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
@@ -40,7 +40,7 @@ export class PapiError extends Error {
 
 export function isMissing(error: unknown) {
   return (
-    error instanceof PapiError && (error.status === 400 || error.status === 404)
+    error instanceof ApiError && (error.status === 400 || error.status === 404)
   );
 }
 
@@ -48,8 +48,8 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(API_URL + path, init);
   const body = await response.json().catch(() => undefined);
   if (!response.ok) {
-    throw new PapiError(
-      body?.error?.message || `PAPI request failed (${response.status})`,
+    throw new ApiError(
+      body?.error?.message || `API request failed (${response.status})`,
       response.status,
       body?.error?.details,
     );
