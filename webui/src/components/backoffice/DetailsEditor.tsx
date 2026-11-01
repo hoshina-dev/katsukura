@@ -1,13 +1,13 @@
 "use client";
 
-import { Button, Group, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Stack, Text } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState, useTransition } from "react";
 
 import type { SubmitResult } from "@/app/actions";
 import type { Metadata } from "@/libs/inventory";
 
-import { errorLines, MetadataInput, parseMetadata } from "./Metadata";
+import { MetadataFields, useMetadataForm } from "./Metadata";
 import { Section } from "./Section";
 
 interface DetailsEditorProps {
@@ -22,7 +22,7 @@ interface DetailsEditorProps {
   ) => Promise<SubmitResult>;
 }
 
-// Save validates on the backend; schema errors are listed under the metadata
+// Save validates on the backend; schema errors show on their fields
 export function DetailsEditor({
   title,
   field,
@@ -30,28 +30,35 @@ export function DetailsEditor({
   save,
 }: DetailsEditorProps) {
   const router = useRouter();
-  const [text, setText] = useState(JSON.stringify(metadata, null, 2));
-  const [errors, setErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  const form = useMetadataForm(metadata, () => setSaved(false));
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
     <Section title={title}>
       <form
+        onChange={() => setSaved(false)}
         onSubmit={(event) => {
           event.preventDefault();
-          const form = new FormData(event.currentTarget);
-          const value = String(form.get("value") ?? "").trim() || null;
+          const data = new FormData(event.currentTarget);
+          const value = String(data.get("value") ?? "").trim() || null;
           setSaved(false);
-          const parsed = parseMetadata(text);
-          if (!parsed.metadata) {
-            setErrors([parsed.error]);
+          const parsed = form.toMetadata();
+          if (parsed.error !== undefined) {
+            setError(parsed.error);
             return;
           }
           startTransition(async () => {
-            const lines = errorLines(await save(value, parsed.metadata));
-            setErrors(lines);
-            if (lines.length === 0) {
+            const result = await save(value, parsed.metadata);
+            setFieldErrors(result.fields ?? {});
+            setError(
+              result.error ??
+                (result.fields?.[""] || null) ??
+                (result.fields ? "Some fields need fixing" : null),
+            );
+            if (!result.error && !result.fields) {
               setSaved(true);
               router.refresh();
             }
@@ -60,14 +67,12 @@ export function DetailsEditor({
       >
         <Stack gap="md">
           {field}
-          <MetadataInput
-            value={text}
-            onChange={(value) => {
-              setText(value);
-              setSaved(false);
-            }}
-            errors={errors}
-          />
+          <MetadataFields form={form} fieldErrors={fieldErrors} compact />
+          {error && (
+            <Alert color="red" variant="light">
+              {error}
+            </Alert>
+          )}
           <Group justify="flex-end" gap="sm">
             {saved && (
               <Text size="sm" c="signal.8">
