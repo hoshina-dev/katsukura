@@ -111,9 +111,12 @@ export function deleteComponent(partId: string, componentId: string) {
   return send<unknown>("DELETE", `/parts/${partId}/components/${componentId}`);
 }
 
-// The API generates serial numbers and copies the part's metadata
-export function createItems(partId: string, count: number) {
-  return send<{ data: Item[] }>("POST", `/parts/${partId}/items`, { count });
+// One item per serial number; the API copies the part's metadata
+export function createItems(partId: string, serialNumbers: string[]) {
+  return send<{ data: Item[] }>("POST", `/parts/${partId}/items`, {
+    count: serialNumbers.length,
+    serial_numbers: serialNumbers,
+  });
 }
 
 // Archives the item; the API keeps it for history
@@ -165,7 +168,7 @@ export function getItem(id: string) {
 
 export function updateItem(
   id: string,
-  patch: Partial<Pick<Item, "location" | "metadata">>,
+  patch: Partial<Pick<Item, "metadata">>,
 ) {
   return send<Item>("PATCH", `/inventory/${id}`, patch);
 }

@@ -2,6 +2,7 @@
 
 import {
   ActionIcon,
+  Box,
   Button,
   Divider,
   Group,
@@ -42,8 +43,24 @@ function strings(value: unknown) {
   return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
 }
 
+type MetadataKey =
+  | "category"
+  | "manufacturer"
+  | "country_of_origin"
+  | "notes"
+  | "temperature_stage"
+  | "image_urls"
+  | "specification";
+
+// Per-key JSON of what would be saved, for spotting unsaved fields
+function snapshot(metadata: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(metadata).map(([k, v]) => [k, JSON.stringify(v)]),
+  ) as Record<MetadataKey, string>;
+}
+
 // Form state for the API's fixed metadata schema (schema/metadata.schema.json)
-export function useMetadataForm(initial: Metadata = {}, onChange?: () => void) {
+export function useMetadataForm(initial: Metadata = {}) {
   const spec = Object.entries(
     (initial.specification ?? {}) as Record<string, unknown>,
   ).map(([key, value], id) => ({ id, key, value: String(value ?? "") }));
@@ -63,68 +80,97 @@ export function useMetadataForm(initial: Metadata = {}, onChange?: () => void) {
   const [specRows, setSpecRows] = useState<SpecRow[]>(
     spec.length > 0 ? spec : [{ id: 0, key: "", value: "" }],
   );
-  const touch =
-    <T,>(set: (value: T) => void) =>
-    (value: T) => {
-      set(value);
-      onChange?.();
-    };
-
   const emptyRow = () => ({ id: nextId.current++, key: "", value: "" });
 
-  const toMetadata = ():
-    | { metadata: Record<string, unknown>; error?: never }
-    | { error: string } => {
-    const specification: Record<string, string> = {};
-    for (const row of specRows) {
-      const key = row.key.trim();
-      if (!key) continue;
-      if (key in specification) {
-        return { error: `Specification "${key}" is listed twice` };
-      }
-      specification[key] = row.value.trim();
-    }
-    return {
-      metadata: {
-        category: category.length > 0 ? category : null,
-        manufacturer: manufacturer.trim() || null,
-        country_of_origin: country,
-        notes: notes.trim() || null,
-        temperature_stage: temperature === "" ? null : Number(temperature),
-        image_urls: images.length > 0 ? images : null,
-        specification,
-      },
-    };
+  const specification: Record<string, string> = {};
+  let repeatedSpec: string | null = null;
+  for (const row of specRows) {
+    const key = row.key.trim();
+    if (!key) continue;
+    if (key in specification) repeatedSpec ??= key;
+    specification[key] = row.value.trim();
+  }
+  const metadata = {
+    category: category.length > 0 ? category : null,
+    manufacturer: manufacturer.trim() || null,
+    country_of_origin: country,
+    notes: notes.trim() || null,
+    temperature_stage: temperature === "" ? null : Number(temperature),
+    image_urls: images.length > 0 ? images : null,
+    specification,
   };
+  const current = snapshot(metadata);
+  // Lazy so the baseline is the first render's values, not every render's
+  const [saved, setSaved] = useState(() => current);
+  const changed = Object.fromEntries(
+    Object.entries(current).map(([k, v]) => [k, saved[k as MetadataKey] !== v]),
+  ) as Record<MetadataKey, boolean>;
+
+  const toMetadata = ():
+    { metadata: Record<string, unknown>; error?: never } | { error: string } =>
+    repeatedSpec
+      ? { error: `Specification "${repeatedSpec}" is listed twice` }
+      : { metadata };
 
   return {
     images,
-    setImages: touch(setImages),
+    setImages,
     category,
-    setCategory: touch(setCategory),
+    setCategory,
     manufacturer,
-    setManufacturer: touch(setManufacturer),
+    setManufacturer,
     country,
-    setCountry: touch(setCountry),
+    setCountry,
     notes,
-    setNotes: touch(setNotes),
+    setNotes,
     temperature,
-    setTemperature: touch(setTemperature),
+    setTemperature,
     specRows,
     updateSpec: (id: number, change: Partial<SpecRow>) =>
-      touch(setSpecRows)(
-        specRows.map((row) => (row.id === id ? { ...row, ...change } : row)),
+      setSpecRows((rows) =>
+        rows.map((row) => (row.id === id ? { ...row, ...change } : row)),
       ),
-    removeSpec: (id: number) => {
-      const rest = specRows.filter((row) => row.id !== id);
-      touch(setSpecRows)(rest.length > 0 ? rest : [emptyRow()]);
-    },
+    removeSpec: (id: number) =>
+      setSpecRows((rows) => {
+        const rest = rows.filter((row) => row.id !== id);
+        return rest.length > 0 ? rest : [emptyRow()];
+      }),
     addSpec: () => setSpecRows((rows) => [...rows, emptyRow()]),
     toMetadata,
+    changed,
+    dirty: Object.values(changed).some(Boolean),
+    // Call after a successful save: the current values become the baseline
+    commit: () => setSaved(current),
   };
 }
 
 export type MetadataForm = ReturnType<typeof useMetadataForm>;
+
+// Label with an orange dot while the field differs from what is saved
+export function ChangedLabel({
+  children,
+  changed,
+}: {
+  children: ReactNode;
+  changed?: boolean;
+}) {
+  return (
+    <Group component="span" gap={6} wrap="nowrap" display="inline-flex">
+      {children}
+      {changed && (
+        <Box
+          component="span"
+          w={7}
+          h={7}
+          bg="orange.6"
+          title="Unsaved change"
+          aria-label="Unsaved change"
+          style={{ borderRadius: "50%", flexShrink: 0 }}
+        />
+      )}
+    </Group>
+  );
+}
 
 function FieldError({ children }: { children?: string }) {
   return children ? (
@@ -134,28 +180,50 @@ function FieldError({ children }: { children?: string }) {
   ) : null;
 }
 
-// Images, classification and specification groups; `compact` fits a sidebar
+export function MetadataImages({
+  form,
+  error,
+}: {
+  form: MetadataForm;
+  error?: string;
+}) {
+  return (
+    <>
+      <ImageUploader
+        value={form.images}
+        onChange={(update) => form.setImages(update(form.images))}
+      />
+      <FieldError>{error}</FieldError>
+    </>
+  );
+}
+
+// Images, classification and specification groups; `compact` fits a sidebar,
+// `hideImages` is for forms that place MetadataImages elsewhere, and
+// `trackChanges` marks fields that differ from the saved values
 export function MetadataFields({
   form,
   fieldErrors,
   compact,
+  hideImages,
+  trackChanges,
 }: {
   form: MetadataForm;
   fieldErrors: Record<string, string>;
   compact?: boolean;
+  hideImages?: boolean;
+  trackChanges?: boolean;
 }) {
-  const groups: { title: string; body: ReactNode }[] = [
+  const label = (text: string, key: MetadataKey) => (
+    <ChangedLabel changed={trackChanges && form.changed[key]}>
+      {text}
+    </ChangedLabel>
+  );
+  const groups: { title: string; key?: MetadataKey; body: ReactNode }[] = [
     {
       title: "Images",
-      body: (
-        <>
-          <ImageUploader
-            value={form.images}
-            onChange={(update) => form.setImages(update(form.images))}
-          />
-          <FieldError>{fieldErrors.image_urls}</FieldError>
-        </>
-      ),
+      key: "image_urls",
+      body: <MetadataImages form={form} error={fieldErrors.image_urls} />,
     },
     {
       title: "Classification",
@@ -163,7 +231,7 @@ export function MetadataFields({
         <>
           <SimpleGrid cols={compact ? 1 : { base: 1, sm: 2 }} spacing="md">
             <TextInput
-              label="Manufacturer"
+              label={label("Manufacturer", "manufacturer")}
               value={form.manufacturer}
               onChange={(event) =>
                 form.setManufacturer(event.currentTarget.value)
@@ -171,7 +239,7 @@ export function MetadataFields({
               error={fieldErrors.manufacturer}
             />
             <Select
-              label="Country of origin"
+              label={label("Country of origin", "country_of_origin")}
               placeholder="Search for a country"
               data={countrySelectData}
               value={form.country}
@@ -182,21 +250,21 @@ export function MetadataFields({
               error={fieldErrors.country_of_origin}
             />
             <TagsInput
-              label="Categories"
+              label={label("Categories", "category")}
               placeholder="Type and press Enter"
               value={form.category}
               onChange={form.setCategory}
               error={fieldErrors.category}
             />
             <NumberInput
-              label="Temperature stage"
+              label={label("Temperature stage", "temperature_stage")}
               value={form.temperature}
               onChange={form.setTemperature}
               error={fieldErrors.temperature_stage}
             />
           </SimpleGrid>
           <Textarea
-            label="Notes"
+            label={label("Notes", "notes")}
             value={form.notes}
             onChange={(event) => form.setNotes(event.currentTarget.value)}
             autosize
@@ -208,6 +276,7 @@ export function MetadataFields({
     },
     {
       title: "Specification",
+      key: "specification",
       body: (
         <>
           <Text size="xs" c="dimmed" mt={-6}>
@@ -262,11 +331,14 @@ export function MetadataFields({
     },
   ];
 
-  return groups.map(({ title, body }) => (
+  const shown = hideImages
+    ? groups.filter((g) => g.title !== "Images")
+    : groups;
+  return shown.map(({ title, key, body }) => (
     <Fragment key={title}>
       <Divider color="var(--app-line)" />
       <Stack gap="sm">
-        <Title order={compact ? 3 : 2}>{title}</Title>
+        <Title order={compact ? 3 : 2}>{key ? label(title, key) : title}</Title>
         {body}
       </Stack>
     </Fragment>

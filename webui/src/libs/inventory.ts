@@ -41,7 +41,6 @@ export type Item = {
   id: string;
   part_id: string;
   serial_number: string | null;
-  location: string | null;
   metadata: Metadata;
   archived_at: string | null;
   part?: Part;
@@ -144,6 +143,16 @@ export function serialLabel(item?: { serial_number: string | null }) {
 }
 
 // Whole number of at least 1, e.g. a quantity typed into a NumberInput
+// Same "RF-SN-" plus 12 digits format as the API's newSerialNumber, so a
+// suggested serial looks like one the API would have generated
+export function generateSerialNumber() {
+  const digits = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) =>
+    String(b % 10),
+  );
+  digits[0] = String((Number(digits[0]) % 9) + 1);
+  return `RF-SN-${digits.join("")}`;
+}
+
 export function isPositiveInt(value: unknown) {
   return Number.isInteger(Number(value)) && Number(value) >= 1;
 }

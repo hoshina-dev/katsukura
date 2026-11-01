@@ -31,6 +31,7 @@ import {
   itemsLabel,
 } from "@/libs/inventory";
 
+import { AddItemsModal } from "./AddItemsModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { Pager } from "./Pager";
 import { EmptyNote, Section } from "./Section";
@@ -55,6 +56,8 @@ export function InventoryInstances({
   const [quantity, setQuantity] = useState<string | number>(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -71,6 +74,16 @@ export function InventoryInstances({
       setSelected(new Set());
       setConfirming(false);
       router.refresh();
+    });
+
+  const add = (serialNumbers: string[]) =>
+    startTransition(async () => {
+      const result = await addItems(partId, serialNumbers);
+      setAddError(result.error ?? null);
+      if (!result.error) {
+        setAdding(false);
+        router.refresh();
+      }
     });
 
   const toggle = (id: string) =>
@@ -119,8 +132,10 @@ export function InventoryInstances({
           size="xs"
           leftSection={<IconPlus size={14} />}
           disabled={!validQuantity}
-          loading={pending}
-          onClick={() => run(() => addItems(partId, Number(quantity)))}
+          onClick={() => {
+            setAddError(null);
+            setAdding(true);
+          }}
         >
           Add {Number(quantity) === 1 ? "item" : "items"}
         </Button>
@@ -172,7 +187,6 @@ export function InventoryInstances({
                     />
                   </TableTh>
                   <TableTh>Serial number</TableTh>
-                  <TableTh>Location</TableTh>
                   <TableTh>Installed in</TableTh>
                 </TableTr>
               </TableThead>
@@ -195,9 +209,6 @@ export function InventoryInstances({
                         {serialLabel(item)}
                       </TextLink>
                     </TableTd>
-                    <TableTd c={item.location ? undefined : "dimmed"}>
-                      {item.location ?? "—"}
-                    </TableTd>
                     <TableTd>
                       <InstalledIn item={item} />
                     </TableTd>
@@ -216,6 +227,15 @@ export function InventoryInstances({
           />
         )}
       </Stack>
+      {adding && (
+        <AddItemsModal
+          count={Number(quantity)}
+          loading={pending}
+          error={addError}
+          onSubmit={add}
+          onClose={() => setAdding(false)}
+        />
+      )}
       <ConfirmModal
         opened={confirming}
         title={`Delete ${selected.size} ${selected.size === 1 ? "item" : "items"}?`}

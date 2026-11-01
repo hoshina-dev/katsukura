@@ -225,7 +225,6 @@ function ReplacePicker({
                     label={
                       <Text size="sm" ff="monospace" component="span">
                         {serialLabel(item)}
-                        {item.location ? ` · ${item.location}` : ""}
                       </Text>
                     }
                   />

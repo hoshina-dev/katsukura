@@ -2,8 +2,9 @@
 
 import {
   Alert,
-  Box,
   Button,
+  Grid,
+  GridCol,
   Group,
   Stack,
   Textarea,
@@ -15,8 +16,10 @@ import { useState, useTransition } from "react";
 import { addPart } from "@/app/actions";
 import {
   MetadataFields,
+  MetadataImages,
   useMetadataForm,
 } from "@/components/backoffice/Metadata";
+import { Section } from "@/components/backoffice/Section";
 
 // Fields mirror the API's fixed metadata schema (schema/metadata.schema.json)
 export function AddPartForm() {
@@ -52,45 +55,59 @@ export function AddPartForm() {
   };
 
   return (
-    <Box className="panel" p="lg" maw={860}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit(new FormData(event.currentTarget));
-        }}
-      >
-        <Stack gap="lg">
-          <Stack gap="sm">
-            <Title order={2}>Unit</Title>
-            <TextInput
-              name="name"
-              label="Name"
-              description="The SKU is generated when the unit is created"
-              required
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(new FormData(event.currentTarget));
+      }}
+    >
+      <Grid gutter="md">
+        <GridCol span={{ base: 12, lg: 8 }}>
+          <Stack gap="lg" className="panel" p="lg">
+            <Stack gap="sm">
+              <Title order={2}>Unit</Title>
+              <TextInput
+                name="name"
+                label="Name"
+                description="The SKU is generated when the unit is created"
+                required
+              />
+              <Textarea
+                name="description"
+                label="Description"
+                autosize
+                minRows={2}
+              />
+            </Stack>
+
+            <MetadataFields
+              form={metadataForm}
+              fieldErrors={fieldErrors}
+              hideImages
             />
-            <Textarea
-              name="description"
-              label="Description"
-              autosize
-              minRows={2}
-            />
+
+            {error && (
+              <Alert color="red" variant="light">
+                {error}
+              </Alert>
+            )}
+
+            <Group justify="flex-end">
+              <Button type="submit" loading={pending}>
+                Create unit
+              </Button>
+            </Group>
           </Stack>
-
-          <MetadataFields form={metadataForm} fieldErrors={fieldErrors} />
-
-          {error && (
-            <Alert color="red" variant="light">
-              {error}
-            </Alert>
-          )}
-
-          <Group justify="flex-end">
-            <Button type="submit" loading={pending}>
-              Create unit
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Box>
+        </GridCol>
+        <GridCol span={{ base: 12, lg: 4 }} order={{ base: -1, lg: 0 }}>
+          <Section title="Images">
+            <MetadataImages
+              form={metadataForm}
+              error={fieldErrors.image_urls}
+            />
+          </Section>
+        </GridCol>
+      </Grid>
+    </form>
   );
 }

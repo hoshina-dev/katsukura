@@ -1,29 +1,10 @@
-"use client";
-
 import { Box, Group, Text } from "@mantine/core";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-
-const NAV = [
-  {
-    href: "/",
-    label: "Units",
-    match: (path: string) =>
-      path === "/" || (path.startsWith("/units/") && path !== "/units/new"),
-  },
-  {
-    href: "/units/new",
-    label: "New unit",
-    match: (path: string) => path === "/units/new",
-  },
-];
 
 export function AppHeader() {
-  const pathname = usePathname();
-
   return (
     <Box component="header" className="app-header">
-      <Group h={48} px="md" maw={1280} mx="auto" gap="lg" wrap="nowrap">
+      <Group h={48} px="md" maw={1280} mx="auto" wrap="nowrap">
         <Link href="/" style={{ textDecoration: "none" }}>
           <Group gap={8} wrap="nowrap">
             <Text c="#14211e" fw={600} size="sm">
@@ -34,19 +15,6 @@ export function AppHeader() {
             </Text>
           </Group>
         </Link>
-        <Group component="nav" gap={4} aria-label="Main">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="nav-link"
-              data-active={item.match(pathname) || undefined}
-              aria-current={item.match(pathname) ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </Group>
       </Group>
     </Box>
   );

@@ -6,10 +6,13 @@ import {
   Button,
   FileButton,
   Group,
+  Image,
   Loader,
+  Modal,
   SimpleGrid,
   Stack,
   Text,
+  UnstyledButton,
 } from "@mantine/core";
 import { IconPhotoPlus, IconX } from "@tabler/icons-react";
 import { useState } from "react";
@@ -36,6 +39,8 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
   );
   const [uploading, setUploading] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
+  // Previews are cropped to fit; this shows the image at its own ratio
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const pick = (files: File[]) => {
     const problems: string[] = [];
@@ -76,15 +81,28 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
   return (
     <Stack gap="xs">
       {(value.length > 0 || uploading > 0) && (
-        <SimpleGrid cols={{ base: 3, sm: 5 }} spacing="xs">
+        <SimpleGrid cols={4} spacing="xs">
           {value.map((url, index) => (
-            <Box key={url} pos="relative">
-              <PartImage
-                src={url}
-                alt={`Image ${index + 1}`}
-                ratio={1}
-                radius="sm"
-              />
+            // The cover spans the row at the gallery's 4:3, like it will show
+            <Box
+              key={url}
+              pos="relative"
+              style={index === 0 ? { gridColumn: "1 / -1" } : undefined}
+            >
+              <UnstyledButton
+                display="block"
+                w="100%"
+                aria-label={`View image ${index + 1}`}
+                onClick={() => setViewing(url)}
+                style={{ cursor: "zoom-in" }}
+              >
+                <PartImage
+                  src={url}
+                  alt={`Image ${index + 1}`}
+                  ratio={index === 0 ? 4 / 3 : 1}
+                  radius="sm"
+                />
+              </UnstyledButton>
               <ActionIcon
                 pos="absolute"
                 top={4}
@@ -118,7 +136,13 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
             <Box
               key={`uploading-${i}`}
               className="panel"
-              style={{ aspectRatio: "1", display: "grid", placeItems: "center" }}
+              style={{
+                display: "grid",
+                placeItems: "center",
+                ...(value.length === 0 && i === 0
+                  ? { gridColumn: "1 / -1", aspectRatio: "4 / 3" }
+                  : { aspectRatio: "1" }),
+              }}
             >
               <Loader size="sm" />
             </Box>
@@ -156,6 +180,26 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
           onSkip={next}
         />
       )}
+      <Modal
+        opened={viewing !== null}
+        onClose={() => setViewing(null)}
+        size="auto"
+        centered
+        withCloseButton={false}
+        padding={0}
+      >
+        {viewing && (
+          <Image
+            src={viewing}
+            alt="Full image"
+            fit="contain"
+            maw="90vw"
+            mah="85vh"
+            w="auto"
+            onClick={() => setViewing(null)}
+          />
+        )}
+      </Modal>
       {errors.map((line) => (
         <Text key={line} size="xs" c="red.8">
           {line}

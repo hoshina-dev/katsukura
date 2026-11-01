@@ -1,11 +1,4 @@
-import {
-  Badge,
-  Grid,
-  GridCol,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Badge, Grid, GridCol, Stack, Text } from "@mantine/core";
 import { notFound } from "next/navigation";
 
 import { saveItem } from "@/app/actions";
@@ -74,13 +67,6 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
             )}
             <DetailsEditor
               title="Details"
-              field={
-                <TextInput
-                  name="value"
-                  label="Location"
-                  defaultValue={item.location ?? ""}
-                />
-              }
               metadata={item.metadata}
               save={saveItem.bind(null, item.id)}
             />

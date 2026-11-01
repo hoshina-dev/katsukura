@@ -1,4 +1,4 @@
-import { Grid, GridCol, Stack, Textarea } from "@mantine/core";
+import { Grid, GridCol, Stack } from "@mantine/core";
 import { notFound } from "next/navigation";
 
 import { savePart } from "@/app/actions";
@@ -56,15 +56,7 @@ export async function SkuDetail({
             )}
             <DetailsEditor
               title="Details"
-              field={
-                <Textarea
-                  name="value"
-                  label="Description"
-                  defaultValue={part.description ?? ""}
-                  autosize
-                  minRows={2}
-                />
-              }
+              text={{ label: "Description", value: part.description }}
               metadata={part.metadata}
               save={savePart.bind(null, part.id)}
             />

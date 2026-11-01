@@ -133,8 +133,8 @@ export async function deletePart(partId: string) {
 
 export async function savePart(
   partId: string,
-  description: string | null,
   metadata: Record<string, unknown>,
+  description: string | null,
 ) {
   return mutate(
     () => updatePart(partId, { description, metadata }),
@@ -142,8 +142,8 @@ export async function savePart(
   );
 }
 
-export async function addItems(partId: string, count: number) {
-  return mutate(() => createItems(partId, count), ITEMS_TAG);
+export async function addItems(partId: string, serialNumbers: string[]) {
+  return mutate(() => createItems(partId, serialNumbers), ITEMS_TAG);
 }
 
 export async function deleteItems(itemIds: string[]) {
@@ -165,10 +165,9 @@ export async function removeBom(partId: string, componentIds: string[]) {
 
 export async function saveItem(
   itemId: string,
-  location: string | null,
   metadata: Record<string, unknown>,
 ) {
-  return mutate(() => updateItem(itemId, { location, metadata }), ITEMS_TAG);
+  return mutate(() => updateItem(itemId, { metadata }), ITEMS_TAG);
 }
 
 // Items of a SKU that are not installed anywhere, for the replace picker

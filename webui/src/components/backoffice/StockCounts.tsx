@@ -2,7 +2,8 @@ import { Box, Group, Text } from "@mantine/core";
 
 import type { Stock } from "@/libs/inventory";
 
-// Installed share of stock in the primary colour, free share tinted
+// Installed share of stock in the primary colour, free share tinted; no
+// stock is an empty dashed outline so it can't pass for "none in use"
 export function StockMeter({
   stock,
   w = 96,
@@ -19,10 +20,9 @@ export function StockMeter({
       style={{
         borderRadius: 3,
         overflow: "hidden",
-        background:
-          stock.total > 0
-            ? "var(--app-meter-free)"
-            : "var(--mantine-color-gray-2)",
+        ...(stock.total > 0
+          ? { background: "var(--app-meter-free)" }
+          : { border: "1px dashed var(--mantine-color-gray-5)" }),
       }}
     >
       <Box h="100%" w={`${inUse}%`} bg="signal.8" />
