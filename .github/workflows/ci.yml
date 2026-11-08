@@ -39,8 +39,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: webui/pnpm-lock.yaml
       - run: make webui-check webui-test webui-build
       # The integration tag adds tests on top of the unit tests, so this runs both.
       - run: make test-integration lint
