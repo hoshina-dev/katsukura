@@ -7,7 +7,7 @@ import { Pager } from "./Pager";
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
   usePathname: () => "/units/A",
-  useRouter: () => ({ replace }),
+  useRouter: () => ({ replace, push: vi.fn() }),
   useSearchParams: () => new URLSearchParams("q=sma&page=2"),
 }));
 
@@ -31,6 +31,30 @@ describe("Pager", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(replace).not.toHaveBeenCalled();
     expect(input).toHaveValue("2");
+  });
+
+  it.each([
+    ["Next", "4"],
+    ["Previous", "4"],
+  ])("keeps the typed page when %s is clicked after it", (button, typed) => {
+    render(<Pager page={2} pageCount={5} total={30} />);
+    const input = screen.getByLabelText("Page");
+    fireEvent.change(input, { target: { value: typed } });
+    // A click blurs the field before the button's handler runs
+    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole("button", { name: button }));
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith(`/units/A?q=sma&page=${typed}`, {
+      scroll: false,
+    });
+  });
+
+  it("steps from the current page when nothing new was typed", () => {
+    render(<Pager page={2} pageCount={5} total={30} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(replace).toHaveBeenCalledWith("/units/A?q=sma&page=3", {
+      scroll: false,
+    });
   });
 
   it("disables Previous on the first page", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { AspectRatio, Center, Image } from "@mantine/core";
+import { AspectRatio, Center, Image, Modal } from "@mantine/core";
 import { IconPhoto } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -51,5 +51,37 @@ export function PartImage({
         </Center>
       )}
     </AspectRatio>
+  );
+}
+
+// The whole image at its own ratio; previews are cropped to fit
+export function ImageViewer({
+  src,
+  onClose,
+}: {
+  src: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      opened={src !== null}
+      onClose={onClose}
+      size="auto"
+      centered
+      withCloseButton={false}
+      padding={0}
+    >
+      {src && (
+        <Image
+          src={src}
+          alt="Full image"
+          fit="contain"
+          maw="90vw"
+          mah="85vh"
+          w="auto"
+          onClick={onClose}
+        />
+      )}
+    </Modal>
   );
 }

@@ -6,22 +6,20 @@ import {
   Button,
   FileButton,
   Group,
-  Image,
   Loader,
-  Modal,
   SimpleGrid,
   Stack,
   Text,
   UnstyledButton,
 } from "@mantine/core";
 import { IconPhotoPlus, IconX } from "@tabler/icons-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { uploadPartImage } from "@/app/actions";
 import { IMAGE_TYPES } from "@/libs/inventory";
 
 import { ImageCropModal } from "./ImageCropModal";
-import { PartImage } from "./PartImage";
+import { ImageViewer, PartImage } from "./PartImage";
 
 // Originals are cropped and compressed to under 1 MB before upload
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
@@ -39,8 +37,9 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
   );
   const [uploading, setUploading] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
-  // Previews are cropped to fit; this shows the image at its own ratio
   const [viewing, setViewing] = useState<string | null>(null);
+  // Clears the file input, so picking the same file again fires onChange
+  const resetFiles = useRef<() => void>(null);
 
   const pick = (files: File[]) => {
     const problems: string[] = [];
@@ -56,6 +55,7 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
     });
     setErrors(problems);
     if (accepted.length > 0) setQueue({ files: accepted, at: 0 });
+    resetFiles.current?.();
   };
 
   const next = () =>
@@ -150,7 +150,12 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
         </SimpleGrid>
       )}
       <Group gap="sm">
-        <FileButton onChange={pick} accept={IMAGE_TYPES.join(",")} multiple>
+        <FileButton
+          onChange={pick}
+          accept={IMAGE_TYPES.join(",")}
+          multiple
+          resetRef={resetFiles}
+        >
           {(props) => (
             <Button
               {...props}
@@ -180,26 +185,7 @@ export function ImageUploader({ value, onChange }: ImageUploaderProps) {
           onSkip={next}
         />
       )}
-      <Modal
-        opened={viewing !== null}
-        onClose={() => setViewing(null)}
-        size="auto"
-        centered
-        withCloseButton={false}
-        padding={0}
-      >
-        {viewing && (
-          <Image
-            src={viewing}
-            alt="Full image"
-            fit="contain"
-            maw="90vw"
-            mah="85vh"
-            w="auto"
-            onClick={() => setViewing(null)}
-          />
-        )}
-      </Modal>
+      <ImageViewer src={viewing} onClose={() => setViewing(null)} />
       {errors.map((line) => (
         <Text key={line} size="xs" c="red.8">
           {line}

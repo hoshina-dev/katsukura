@@ -15,6 +15,7 @@ export type Part = {
   archived_at: string | null;
   // Filled on part lists and details
   stock?: Stock;
+  component_count?: number;
 };
 
 // Counts of a SKU's items
@@ -33,9 +34,14 @@ export type PartComponent = {
   slot: string;
   required_quantity: number;
   child_part?: Part;
+  parent_part?: Part;
 };
 
-export type PartDetail = Part & { components: PartComponent[] };
+export type PartDetail = Part & {
+  components: PartComponent[];
+  // BOM rows of other units that use this one, with parent_part loaded
+  parents: PartComponent[];
+};
 
 export type Item = {
   id: string;
@@ -54,6 +60,7 @@ export type Installation = {
   component_item_id: string;
   part_component_id: string;
   position: string | null;
+  installed_at: string;
   removed_at: string | null;
   component_item?: Item;
   parent_item?: Item;
@@ -61,6 +68,8 @@ export type Installation = {
 
 export type ItemDetail = Item & {
   components: Installation[];
+  // Removed installations, newest first
+  history: Installation[];
 };
 
 export type List<T> = {
@@ -77,6 +86,7 @@ export const CATALOG_PAGE_SIZE = 12;
 export const LIST_PAGE_SIZE = 25;
 export const ITEMS_PAGE_SIZE = 20;
 export const ITEMS_PAGE_PARAM = "items_page";
+export const ITEMS_SEARCH_PARAM = "items_q";
 
 export type CatalogView = "grid" | "table";
 export type CatalogSort = "default" | "name" | "amount";
@@ -91,8 +101,10 @@ export type CatalogEntry = {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   imageUrl: string | null;
   stock: Stock;
+  componentCount: number;
 };
 
 export type SearchParams = Record<string, string | string[] | undefined>;
@@ -100,6 +112,10 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 function param(params: SearchParams, key: string) {
   const value = params[key];
   return (Array.isArray(value) ? value[0] : value) ?? "";
+}
+
+export function textParam(params: SearchParams, key: string) {
+  return param(params, key).trim();
 }
 
 export function pageParam(params: SearchParams, key: string) {

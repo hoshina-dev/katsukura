@@ -80,6 +80,9 @@ func (s *parentUsageStore) GetPart(context.Context, uuid.UUID) (*models.Part, er
 func (s *parentUsageStore) Stock(context.Context, []uuid.UUID) (map[uuid.UUID]models.Stock, error) {
 	return nil, nil
 }
+func (s *parentUsageStore) ComponentCounts(context.Context, []uuid.UUID) (map[uuid.UUID]int64, error) {
+	return nil, nil
+}
 func (s *parentUsageStore) Components(context.Context, uuid.UUID) ([]models.PartComponent, error) {
 	return []models.PartComponent{}, nil
 }

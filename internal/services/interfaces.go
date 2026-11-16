@@ -16,6 +16,7 @@ type Store interface {
 	Create(context.Context, any) error
 	AvailableItems(ctx context.Context, partID uuid.UUID, limit int) ([]uuid.UUID, error)
 	HasItems(ctx context.Context, partID uuid.UUID) (bool, error)
+	SlotUsed(ctx context.Context, componentID uuid.UUID) (bool, error)
 	Update(context.Context, any, uuid.UUID, map[string]any) error
 	Archive(context.Context, any, uuid.UUID) error
 	ArchivePartItems(context.Context, uuid.UUID) error
@@ -26,6 +27,7 @@ type Store interface {
 	Installations(context.Context, uuid.UUID, bool) ([]models.ItemComponent, error)
 	Parts(context.Context, models.Filter) (models.Page[models.Part], error)
 	Stock(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]models.Stock, error)
+	ComponentCounts(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]int64, error)
 	Items(context.Context, models.Filter) (models.Page[models.InventoryItem], error)
 	Tree(context.Context, uuid.UUID, int) (*models.TreeNode, error)
 	Summary(context.Context) (models.Summary, error)

@@ -11,10 +11,12 @@ import {
 } from "@mantine/core";
 import { useState } from "react";
 
-import { generateSerialNumber } from "@/libs/inventory";
+import { generateSerialNumber, type PartComponent } from "@/libs/inventory";
 
 interface AddItemsModalProps {
   count: number;
+  // BOM rows, with child_part and its stock loaded
+  slots: PartComponent[];
   loading?: boolean;
   // Why the last attempt failed
   error?: string | null;
@@ -25,6 +27,7 @@ interface AddItemsModalProps {
 // Mount only while open, so each opening suggests fresh serial numbers
 export function AddItemsModal({
   count,
+  slots,
   loading,
   error,
   onSubmit,
@@ -60,6 +63,7 @@ export function AddItemsModal({
         }}
       >
         <Stack gap="sm">
+          {slots.length > 0 && <StockNeeded slots={slots} count={count} />}
           <Text size="sm" c="dimmed">
             Leave a field blank to use the generated serial number. Serial
             numbers cannot be changed after the {label} are added.
@@ -105,5 +109,43 @@ export function AddItemsModal({
         </Stack>
       </form>
     </Modal>
+  );
+}
+
+// Each new item takes the oldest free items of every BOM slot; the API adds
+// nothing if any slot is short
+function StockNeeded({
+  slots,
+  count,
+}: {
+  slots: PartComponent[];
+  count: number;
+}) {
+  return (
+    <Stack gap={4}>
+      <Text size="sm">Taken from stock:</Text>
+      {slots.map((slot) => {
+        const need = slot.required_quantity * count;
+        const free = slot.child_part?.stock?.available ?? 0;
+        return (
+          <Group key={slot.id} justify="space-between" wrap="nowrap">
+            <Text size="sm" truncate>
+              {slot.child_part?.name ?? slot.slot}{" "}
+              <Text span size="xs" c="dimmed" ff="monospace">
+                {slot.slot}
+              </Text>
+            </Text>
+            <Text
+              size="sm"
+              className="tabular"
+              c={need > free ? "red.8" : "dimmed"}
+              style={{ flexShrink: 0 }}
+            >
+              {need} of {free} free
+            </Text>
+          </Group>
+        );
+      })}
+    </Stack>
   );
 }

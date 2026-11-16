@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Badge,
   Box,
   Group,
   Loader,
@@ -15,7 +16,7 @@ import {
 } from "@mantine/core";
 import { useIntersection } from "@mantine/hooks";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { loadCatalogPage } from "@/app/actions";
 import {
@@ -35,6 +36,22 @@ interface CatalogTableProps {
   query: CatalogQuery;
 }
 
+// Marks a unit with a bill of materials
+export function AssemblyBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <Badge
+      color="gray"
+      variant="light"
+      radius="sm"
+      size="xs"
+      style={{ flexShrink: 0 }}
+    >
+      Assembly · {count} {count === 1 ? "slot" : "slots"}
+    </Badge>
+  );
+}
+
 // One scrollable table that loads more rows near its end
 export function CatalogTable({
   entries: first,
@@ -45,17 +62,16 @@ export function CatalogTable({
   const [entries, setEntries] = useState(first);
   const [loading, setLoading] = useState(false);
   const [stopped, setStopped] = useState<string | null>(null);
-  const loaded = useRef(1);
   const { ref, entry } = useIntersection({ threshold: 0 });
-  const [deleted, setDeleted] = useState(0);
-  const hasMore = entries.length + deleted < total && !stopped;
+  // A delete refreshes the page, so total already excludes deleted rows
+  const hasMore = entries.length < total && !stopped;
 
   useEffect(() => {
     if (!entry?.isIntersecting || !hasMore || loading) return;
     setLoading(true);
-    loadCatalogPage({ ...query, page: loaded.current + 1 })
+    // Continue after the rows shown, so a deleted row doesn't skip one
+    loadCatalogPage(query, entries.length)
       .then((next) => {
-        loaded.current += 1;
         // Rows can shift while scrolling; skip any already shown
         setEntries((current) => {
           const seen = new Set(current.map((row) => row.id));
@@ -68,7 +84,7 @@ export function CatalogTable({
       })
       .catch(() => setStopped("Could not load more results"))
       .finally(() => setLoading(false));
-  }, [entry?.isIntersecting, hasMore, loading, query]);
+  }, [entry?.isIntersecting, hasMore, loading, query, entries.length]);
 
   return (
     <Box
@@ -80,21 +96,23 @@ export function CatalogTable({
         stickyHeader
         verticalSpacing={8}
         horizontalSpacing="md"
-        miw={720}
+        miw={{ base: 0, sm: 720 }}
       >
         <TableThead>
           <TableTr>
             <TableTh>Unit</TableTh>
-            <TableTh ta="right" w={90}>
+            <TableTh ta="right" w={90} visibleFrom="sm">
               Total
             </TableTh>
-            <TableTh ta="right" w={90}>
+            <TableTh ta="right" w={90} visibleFrom="sm">
               In use
             </TableTh>
-            <TableTh ta="right" w={90}>
+            <TableTh ta="right" w={90} visibleFrom="sm">
               Available
             </TableTh>
-            <TableTh w={140}>Utilisation</TableTh>
+            <TableTh w={140} visibleFrom="sm">
+              Utilisation
+            </TableTh>
             <TableTh w={52}>
               <VisuallyHidden>Actions</VisuallyHidden>
             </TableTh>
@@ -127,26 +145,47 @@ export function CatalogTable({
                       />
                     </Box>
                     <Box miw={0}>
-                      <Text size="sm" fw={500} truncate>
-                        {entry.name}
-                      </Text>
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="sm" fw={500} truncate>
+                          {entry.name}
+                        </Text>
+                        <AssemblyBadge count={entry.componentCount} />
+                      </Group>
                       <Text size="xs" c="dimmed" ff="monospace">
                         {entry.sku}
+                      </Text>
+                      {entry.description && (
+                        <Text size="xs" c="dimmed" lineClamp={1}>
+                          {entry.description}
+                        </Text>
+                      )}
+                      {/* The stock columns are hidden on narrow screens */}
+                      <Text
+                        size="xs"
+                        c="dimmed"
+                        className="tabular"
+                        hiddenFrom="sm"
+                      >
+                        {entry.stock.in_use} in use · {entry.stock.available}{" "}
+                        free
                       </Text>
                     </Box>
                   </Group>
                 </TableTd>
-                <TableTd ta="right" fw={600}>
+                <TableTd ta="right" fw={600} visibleFrom="sm">
                   {entry.stock.total}
                 </TableTd>
-                <TableTd ta="right">{entry.stock.in_use}</TableTd>
+                <TableTd ta="right" visibleFrom="sm">
+                  {entry.stock.in_use}
+                </TableTd>
                 <TableTd
                   ta="right"
                   c={entry.stock.available === 0 ? "dimmed" : undefined}
+                  visibleFrom="sm"
                 >
                   {entry.stock.available}
                 </TableTd>
-                <TableTd>
+                <TableTd visibleFrom="sm">
                   <StockMeter stock={entry.stock} />
                 </TableTd>
                 <TableTd>
@@ -154,12 +193,11 @@ export function CatalogTable({
                     partId={entry.id}
                     name={entry.name}
                     itemCount={entry.stock.total}
-                    onDeleted={() => {
+                    onDeleted={() =>
                       setEntries((rows) =>
                         rows.filter((row) => row.id !== entry.id),
-                      );
-                      setDeleted((n) => n + 1);
-                    }}
+                      )
+                    }
                   />
                 </TableTd>
               </TableTr>
@@ -172,7 +210,7 @@ export function CatalogTable({
           <Loader size="xs" />
         ) : (
           <Text size="xs" c="dimmed" className="tabular">
-            {stopped ?? `${entries.length} of ${total - deleted} units`}
+            {stopped ?? `${entries.length} of ${total} units`}
           </Text>
         )}
       </Group>

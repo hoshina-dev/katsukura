@@ -107,7 +107,8 @@ export function useMetadataForm(initial: Metadata = {}) {
   ) as Record<MetadataKey, boolean>;
 
   const toMetadata = ():
-    { metadata: Record<string, unknown>; error?: never } | { error: string } =>
+    | { metadata: Record<string, unknown>; error?: never }
+    | { error: string } =>
     repeatedSpec
       ? { error: `Specification "${repeatedSpec}" is listed twice` }
       : { metadata };
@@ -191,7 +192,8 @@ export function MetadataImages({
     <>
       <ImageUploader
         value={form.images}
-        onChange={(update) => form.setImages(update(form.images))}
+        // Updaters, so overlapping uploads each add to the latest list
+        onChange={form.setImages}
       />
       <FieldError>{error}</FieldError>
     </>

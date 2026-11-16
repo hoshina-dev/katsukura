@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 
 import { render } from "@/tests/utils";
 
@@ -31,5 +31,24 @@ describe("PartGallery", () => {
     expect(
       screen.getByRole("img", { name: "Desk (2 of 2)" }),
     ).toBeInTheDocument();
+  });
+
+  it("opens the full image", () => {
+    render(<PartGallery images={["https://x/a.jpg"]} alt="Desk" />);
+    fireEvent.click(screen.getByLabelText("View full image: Desk"));
+    expect(screen.getByRole("img", { name: "Full image" })).toBeInTheDocument();
+  });
+
+  it("loads a replacement after the previous image failed", () => {
+    const { rerender } = render(
+      <PartGallery images={["https://x/a.jpg"]} alt="Desk" />,
+    );
+    fireEvent.error(screen.getByRole("img", { name: "Desk" }));
+    expect(screen.queryByRole("img", { name: "Desk" })).not.toBeInTheDocument();
+    rerender(<PartGallery images={["https://x/b.jpg"]} alt="Desk" />);
+    expect(screen.getByRole("img", { name: "Desk" })).toHaveAttribute(
+      "src",
+      "https://x/b.jpg",
+    );
   });
 });

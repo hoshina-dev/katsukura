@@ -97,7 +97,7 @@ export function createPart(part: NewPart) {
 
 export function updatePart(
   id: string,
-  patch: Partial<Pick<Part, "description" | "metadata">>,
+  patch: Partial<Pick<Part, "name" | "description" | "metadata">>,
 ) {
   return send<Part>("PATCH", `/parts/${id}`, patch);
 }
@@ -145,12 +145,13 @@ type ItemFilter = {
   search?: string;
   // Only items not installed anywhere
   available?: boolean;
+  includeArchived?: boolean;
 };
 
 const flag = (on?: boolean) => (on ? "true" : undefined);
 
 export function listItems(partId: string, filter: ItemFilter = {}) {
-  const { limit = 100, offset, search, available } = filter;
+  const { limit = 100, offset, search, available, includeArchived } = filter;
   return get<List<Item>>(
     `/inventory?${qs({
       part_id: partId,
@@ -158,7 +159,20 @@ export function listItems(partId: string, filter: ItemFilter = {}) {
       offset,
       search,
       available: flag(available),
+      include_archived: flag(includeArchived),
     })}`,
+  );
+}
+
+// Items of any unit whose serial number contains the text; the API also
+// matches unit names and SKUs, so those rows are dropped here
+export async function findItemsBySerial(serial: string, limit = 10) {
+  const list = await get<List<Item>>(
+    `/inventory?${qs({ search: serial, limit })}`,
+  );
+  const needle = serial.toLowerCase();
+  return list.data.filter((item) =>
+    item.serial_number?.toLowerCase().includes(needle),
   );
 }
 
@@ -166,10 +180,7 @@ export function getItem(id: string) {
   return get<ItemDetail>(`/inventory/${id}`);
 }
 
-export function updateItem(
-  id: string,
-  patch: Partial<Pick<Item, "metadata">>,
-) {
+export function updateItem(id: string, patch: Partial<Pick<Item, "metadata">>) {
   return send<Item>("PATCH", `/inventory/${id}`, patch);
 }
 
@@ -218,14 +229,18 @@ function toEntry(part: Part): CatalogEntry {
     id: part.id,
     sku: part.sku,
     name: part.name,
+    description: part.description,
     imageUrl: imageUrls(part.metadata)[0] ?? null,
     stock: part.stock ?? { total: 0, in_use: 0, available: 0 },
+    componentCount: part.component_count ?? 0,
   };
 }
 
+// offset overrides the page, e.g. to continue after rows already shown
 export async function getCatalog(
   query: CatalogQuery,
   pageSize = CATALOG_PAGE_SIZE,
+  offset = (query.page - 1) * pageSize,
 ) {
   const sort = { default: undefined, name: "name", amount: "items" }[
     query.sort
@@ -235,7 +250,7 @@ export async function getCatalog(
       search: query.search,
       sort,
       limit: pageSize,
-      offset: (query.page - 1) * pageSize,
+      offset,
     })}`,
   );
   return { entries: list.data.map(toEntry), total: list.total };

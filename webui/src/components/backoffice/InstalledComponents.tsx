@@ -206,7 +206,11 @@ function ReplacePicker({
           placeholder="Search by serial number..."
           leftSection={<IconSearch size={16} />}
           value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
+          onChange={(event) => {
+            setSearch(event.currentTarget.value);
+            // The selection may not be in the new results
+            setSelected(null);
+          }}
         />
         {items === null ? (
           <Group justify="center" py="md">
@@ -242,7 +246,11 @@ function ReplacePicker({
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!selected} loading={pending} onClick={replace}>
+          <Button
+            disabled={!items?.some((item) => item.id === selected)}
+            loading={pending}
+            onClick={replace}
+          >
             Replace
           </Button>
         </Group>

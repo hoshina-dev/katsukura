@@ -50,6 +50,8 @@ type Part struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	// Counts of the part's items; filled on part lists and details
 	Stock *Stock `json:"stock,omitempty" gorm:"-"`
+	// Number of BOM rows; filled on part lists and details
+	ComponentCount *int64 `json:"component_count,omitempty" gorm:"-"`
 }
 
 // Stock counts a part's unarchived items.

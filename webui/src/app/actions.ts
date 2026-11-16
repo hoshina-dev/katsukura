@@ -19,6 +19,7 @@ import {
   createPart,
   deleteComponent,
   getCatalog,
+  getPart,
   listItems,
   type NewComponent,
   ITEMS_TAG,
@@ -43,8 +44,12 @@ export type SubmitResult = {
 // Parallel API calls per batch when one action touches many rows
 const BATCH_SIZE = 10;
 
+// A network failure becomes a form error too, so the caller keeps its draft
 function toResult(error: unknown): SubmitResult {
-  if (!(error instanceof ApiError)) throw error;
+  if (!(error instanceof ApiError)) {
+    console.error("API request failed", error);
+    return { error: "Could not reach the inventory API. Try again." };
+  }
   if (error.details.length === 0) return { error: error.message };
   const fields: Record<string, string> = {};
   for (const { field, message } of error.details) {
@@ -58,28 +63,30 @@ async function inBatches<T>(
   values: T[],
   task: (value: T) => Promise<unknown>,
   verb: string,
-) {
+): Promise<{ error?: string; failed: T[] }> {
   const failures: string[] = [];
+  const failed: T[] = [];
   for (let i = 0; i < values.length; i += BATCH_SIZE) {
-    const results = await Promise.allSettled(
-      values.slice(i, i + BATCH_SIZE).map(task),
-    );
-    for (const result of results) {
+    const batch = values.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(task));
+    results.forEach((result, j) => {
       if (result.status === "rejected") {
         if (!(result.reason instanceof ApiError)) throw result.reason;
         failures.push(result.reason.message);
+        failed.push(batch[j]);
       }
-    }
+    });
   }
-  if (failures.length === 0) return {};
+  if (failures.length === 0) return { failed };
   return {
     error: `${failures.length} of ${values.length} could not be ${verb}: ${failures[0]}`,
+    failed,
   };
 }
 
-// One more step of the scrolling catalog table
-export async function loadCatalogPage(query: CatalogQuery) {
-  return getCatalog(query, LIST_PAGE_SIZE);
+// More rows of the scrolling catalog table, after the ones already shown
+export async function loadCatalogPage(query: CatalogQuery, offset: number) {
+  return getCatalog(query, LIST_PAGE_SIZE, offset);
 }
 
 // One file per call, so each stays under the server action body limit
@@ -127,6 +134,25 @@ async function mutate(
   return {};
 }
 
+// Why deleting the part would be refused, so the dialog can say so first.
+// Mirrors the API's ArchivePart check; a parent that ever had items has slot
+// history, so only deleting that parent unblocks this one.
+export async function partDeleteBlocker(partId: string) {
+  const part = await getPart(partId);
+  const use = part.parents.find(
+    (row) => row.parent_part && !row.parent_part.archived_at,
+  );
+  if (!use?.parent_part) return null;
+  const parent = use.parent_part;
+  const history = await listItems(parent.id, {
+    limit: 1,
+    includeArchived: true,
+  });
+  return history.total > 0
+    ? `${part.name} is used in the bill of materials of ${parent.name}. Delete ${parent.name} first; its bill of materials can no longer change.`
+    : `${part.name} is used in the bill of materials of ${parent.name}. Remove it from that bill of materials first.`;
+}
+
 export async function deletePart(partId: string) {
   return mutate(() => archivePart(partId), partTag(partId), ITEMS_TAG);
 }
@@ -135,9 +161,10 @@ export async function savePart(
   partId: string,
   metadata: Record<string, unknown>,
   description: string | null,
+  name?: string,
 ) {
   return mutate(
-    () => updatePart(partId, { description, metadata }),
+    () => updatePart(partId, { description, metadata, name }),
     partTag(partId),
   );
 }
@@ -192,9 +219,13 @@ export async function replaceItem(
   );
 }
 
-export async function findParts(search: string) {
+// Candidates for a BOM row of partId, which can't contain itself
+export async function findParts(search: string, partId: string) {
   const list = await searchParts(search.trim());
-  return list.data.map(({ id, sku, name }) => ({ id, sku, name }));
+  const parts = list.data
+    .filter((part) => part.id !== partId)
+    .map(({ id, sku, name }) => ({ id, sku, name }));
+  return { parts, more: list.total > list.data.length };
 }
 
 // BOM changes can demote existing items, so stock counts are expired too

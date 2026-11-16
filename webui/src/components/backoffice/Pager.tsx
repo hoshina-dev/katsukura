@@ -6,14 +6,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import { isPositiveInt } from "@/libs/inventory";
 
-// Updates search params in place; changing a filter resets the catalog page
+// Updates search params in place; changing a filter resets the catalog page.
+// push adds a history entry, so Back returns to the previous params.
 export function useSearchParamUpdate() {
   const params = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
 
   const update = useCallback(
-    (changes: Record<string, string | null>, resetPage = true) => {
+    (
+      changes: Record<string, string | null>,
+      resetPage = true,
+      push = false,
+    ) => {
       const next = new URLSearchParams(params.toString());
       for (const [key, value] of Object.entries(changes)) {
         if (value) next.set(key, value);
@@ -21,9 +26,9 @@ export function useSearchParamUpdate() {
       }
       if (resetPage) next.delete("page");
       const search = next.toString();
-      router.replace(search ? `${pathname}?${search}` : pathname, {
-        scroll: false,
-      });
+      const href = search ? `${pathname}?${search}` : pathname;
+      if (push) router.push(href, { scroll: false });
+      else router.replace(href, { scroll: false });
     },
     [params, pathname, router],
   );
@@ -48,13 +53,17 @@ export function Pager({ page, pageCount, total, param = "page" }: PagerProps) {
 
   const goTo = (next: number) =>
     update({ [param]: next > 1 ? String(next) : null }, false);
+  const typed = Number(draft);
+  const typedPage = isPositiveInt(typed) && typed <= pageCount ? typed : null;
   const commit = () => {
-    const next = Number(draft);
-    if (isPositiveInt(next) && next <= pageCount) {
-      if (next !== page) goTo(next);
-    } else {
-      setDraft(page);
-    }
+    if (typedPage === null) setDraft(page);
+    else if (typedPage !== page) goTo(typedPage);
+  };
+  // Clicking a button blurs the field first, and that blur already went to
+  // the typed page; stepping from the stale page prop would override it
+  const step = (by: number) => {
+    if (typedPage !== null && typedPage !== page) return;
+    goTo(page + by);
   };
 
   return (
@@ -67,7 +76,7 @@ export function Pager({ page, pageCount, total, param = "page" }: PagerProps) {
           variant="default"
           size="sm"
           disabled={page <= 1}
-          onClick={() => goTo(page - 1)}
+          onClick={() => step(-1)}
         >
           Previous
         </Button>
@@ -96,7 +105,7 @@ export function Pager({ page, pageCount, total, param = "page" }: PagerProps) {
           variant="default"
           size="sm"
           disabled={page >= pageCount}
-          onClick={() => goTo(page + 1)}
+          onClick={() => step(1)}
         >
           Next
         </Button>

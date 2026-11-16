@@ -28,24 +28,46 @@ const SORTS = [
 
 export function CatalogToolbar() {
   const { params, update } = useSearchParamUpdate();
-  const [search, setSearch] = useState(params.get("q") ?? "");
+  const urlQuery = (params.get("q") ?? "").trim();
+  const [search, setSearch] = useState(urlQuery);
   const [debounced] = useDebouncedValue(search, 300);
-  const lastSearch = useRef(debounced);
+  // The query in the address as of the toolbar's last write or adoption
+  const written = useRef(urlQuery);
+  const lastDebounced = useRef(debounced);
+  // One history entry per search: the first write pushes, later keystrokes
+  // replace it until the box loses focus
+  const pushed = useRef(false);
+
+  // A link or Back changed the query: show it in the box
+  useEffect(() => {
+    if (urlQuery === written.current) return;
+    written.current = urlQuery;
+    pushed.current = false;
+    setSearch(urlQuery);
+  }, [urlQuery]);
 
   useEffect(() => {
-    if (lastSearch.current === debounced) return;
-    lastSearch.current = debounced;
-    update({ q: debounced.trim() || null });
+    // update changes with every navigation; only new typing writes
+    if (debounced === lastDebounced.current) return;
+    lastDebounced.current = debounced;
+    const query = debounced.trim();
+    if (query === written.current) return;
+    written.current = query;
+    update({ q: query || null }, true, !pushed.current);
+    pushed.current = true;
   }, [debounced, update]);
 
   return (
     <Group gap="sm" wrap="wrap">
       <TextInput
-        aria-label="Search by name or SKU"
-        placeholder="Search name or SKU"
+        aria-label="Search by name, SKU, description or serial number"
+        placeholder="Search name, SKU, description or serial"
         leftSection={<IconSearch size={16} />}
         value={search}
         onChange={(event) => setSearch(event.currentTarget.value)}
+        onBlur={() => {
+          pushed.current = false;
+        }}
         style={{ flex: "1 1 240px" }}
       />
       <Select

@@ -73,6 +73,13 @@ func (r *Repository) HasItems(ctx context.Context, partID uuid.UUID) (ok bool, e
 	e = r.db.WithContext(ctx).Raw("SELECT EXISTS (SELECT 1 FROM inventory_items WHERE part_id = ? AND archived_at IS NULL)", partID).Scan(&ok).Error
 	return
 }
+
+// SlotUsed reports whether any item was ever installed in the BOM row; that
+// history keeps the row from being deleted
+func (r *Repository) SlotUsed(ctx context.Context, componentID uuid.UUID) (ok bool, e error) {
+	e = r.db.WithContext(ctx).Raw("SELECT EXISTS (SELECT 1 FROM item_components WHERE part_component_id = ?)", componentID).Scan(&ok).Error
+	return
+}
 func (r *Repository) Update(ctx context.Context, v any, id uuid.UUID, fields map[string]any) error {
 	return r.db.WithContext(ctx).Model(v).Where("id = ?", id).Updates(fields).Error
 }
@@ -107,7 +114,7 @@ func (r *Repository) Parts(ctx context.Context, f models.Filter) (models.Page[mo
 		q = q.Where("archived_at IS NULL")
 	}
 	if f.Search != "" {
-		q = q.Where("sku ILIKE @s OR name ILIKE @s", sql.Named("s", like(f.Search)))
+		q = q.Where("sku ILIKE @s OR name ILIKE @s OR description ILIKE @s", sql.Named("s", like(f.Search)))
 	}
 	if e := q.Count(&v.Total).Error; e != nil {
 		return v, e
@@ -164,6 +171,21 @@ func (r *Repository) Stock(ctx context.Context, partIDs []uuid.UUID) (map[uuid.U
 		stock[row.PartID] = row.Stock
 	}
 	return stock, e
+}
+
+// ComponentCounts counts each part's BOM rows; parts without a BOM are left out.
+func (r *Repository) ComponentCounts(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	var rows []struct {
+		PartID uuid.UUID
+		Count  int64
+	}
+	e := r.db.WithContext(ctx).Raw(`SELECT parent_part_id AS part_id, count(*) AS count
+	FROM part_components WHERE parent_part_id IN ? GROUP BY parent_part_id`, partIDs).Scan(&rows).Error
+	counts := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		counts[row.PartID] = row.Count
+	}
+	return counts, e
 }
 func (r *Repository) Summary(ctx context.Context) (models.Summary, error) {
 	v := models.Summary{}

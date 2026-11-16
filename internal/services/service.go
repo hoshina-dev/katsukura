@@ -41,16 +41,20 @@ func (s *Service) Parts(ctx context.Context, f models.Filter) (models.Page[model
 	})
 }
 
-// withStock fills each part's item counts.
+// withStock fills each part's item and BOM row counts.
 func withStock(ctx context.Context, r Store, parts []models.Part) error {
 	ids := make([]uuid.UUID, len(parts))
 	for i, p := range parts {
 		ids[i] = p.ID
 	}
 	stock, e := r.Stock(ctx, ids)
+	if e != nil {
+		return e
+	}
+	counts, e := r.ComponentCounts(ctx, ids)
 	for i, p := range parts {
-		v := stock[p.ID]
-		parts[i].Stock = &v
+		v, n := stock[p.ID], counts[p.ID]
+		parts[i].Stock, parts[i].ComponentCount = &v, &n
 	}
 	return e
 }
@@ -73,6 +77,22 @@ func (s *Service) Part(ctx context.Context, id uuid.UUID) (*models.PartDetail, e
 		c, e := r.Components(ctx, id)
 		if e != nil {
 			return nil, e
+		}
+		// Child stock lets the UI show what building an item takes
+		children := make([]models.Part, 0, len(c))
+		for _, v := range c {
+			if v.ChildPart != nil {
+				children = append(children, *v.ChildPart)
+			}
+		}
+		if e := withStock(ctx, r, children); e != nil {
+			return nil, e
+		}
+		for i, j := 0, 0; i < len(c); i++ {
+			if c[i].ChildPart != nil {
+				c[i].ChildPart = &children[j]
+				j++
+			}
 		}
 		parents, e := r.ParentComponents(ctx, id)
 		if e != nil {
@@ -330,6 +350,13 @@ func (s *Service) DeleteComponent(ctx context.Context, parent, id uuid.UUID) err
 		if e := bomLocked(ctx, r, parent); e != nil {
 			return e
 		}
+		// Otherwise the installation history's foreign key fails with a generic error
+		if used, e := r.SlotUsed(ctx, id); e != nil || used {
+			if e != nil {
+				return e
+			}
+			return apperrors.Conflict(fmt.Sprintf("The %s slot has installation history, so it cannot be removed", c.Slot))
+		}
 		return r.DeleteComponent(ctx, id)
 	})
 }
@@ -349,9 +376,24 @@ func (s *Service) ArchivePart(ctx context.Context, id uuid.UUID) error {
 			return e
 		}
 		for _, use := range uses {
-			if use.ParentPart != nil && use.ParentPart.ArchivedAt == nil {
-				return apperrors.Conflict(fmt.Sprintf("%s is used in the BOM of %s; remove it there first", p.Name, use.ParentPart.Name))
+			if use.ParentPart == nil || use.ParentPart.ArchivedAt != nil {
+				continue
 			}
+			// A slot that ever held an item cannot be removed, so only deleting the parent unblocks this
+			used, e := r.SlotUsed(ctx, use.ID)
+			if e != nil {
+				return e
+			}
+			if !used {
+				used, e = r.HasItems(ctx, use.ParentPartID)
+				if e != nil {
+					return e
+				}
+			}
+			if used {
+				return apperrors.Conflict(fmt.Sprintf("%s is used in the BOM of %s; delete %s first", p.Name, use.ParentPart.Name, use.ParentPart.Name))
+			}
+			return apperrors.Conflict(fmt.Sprintf("%s is used in the BOM of %s; remove it there first", p.Name, use.ParentPart.Name))
 		}
 		if e := r.ArchivePartItems(ctx, id); e != nil {
 			return e

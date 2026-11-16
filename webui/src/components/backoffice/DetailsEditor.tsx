@@ -9,18 +9,22 @@ import {
   Stack,
   Text,
   Textarea,
+  TextInput,
 } from "@mantine/core";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 
 import type { SubmitResult } from "@/app/actions";
 import type { Metadata } from "@/libs/inventory";
 
 import { ChangedLabel, MetadataFields, useMetadataForm } from "./Metadata";
 import { Section } from "./Section";
+import { useUnsavedChanges } from "./useUnsavedChanges";
 
 interface DetailsEditorProps {
   title: string;
+  // Optional required name, saved trimmed
+  name?: string;
   // Optional text field saved next to the metadata; blank saves null
   text?: { label: string; value: string | null };
   metadata: Metadata;
@@ -28,12 +32,14 @@ interface DetailsEditorProps {
   save: (
     metadata: Record<string, unknown>,
     text: string | null,
+    name?: string,
   ) => Promise<SubmitResult>;
 }
 
 // Save validates on the backend; schema errors show on their fields
 export function DetailsEditor({
   title,
+  name: initialName,
   text,
   metadata,
   save,
@@ -42,20 +48,17 @@ export function DetailsEditor({
   const form = useMetadataForm(metadata);
   const [value, setValue] = useState(text?.value ?? "");
   const [savedValue, setSavedValue] = useState(value.trim());
+  const [name, setName] = useState(initialName ?? "");
+  const [savedName, setSavedName] = useState(name.trim());
+  const nameChanged = initialName !== undefined && name.trim() !== savedName;
   const [justSaved, setJustSaved] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const textChanged = value.trim() !== savedValue;
-  const dirty = form.dirty || textChanged;
+  const dirty = form.dirty || textChanged || nameChanged;
 
-  // Full page loads and tab closes only; in-app links don't fire this
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedChanges(dirty);
 
   return (
     <Section
@@ -76,8 +79,21 @@ export function DetailsEditor({
             setError(parsed.error);
             return;
           }
+          if (initialName !== undefined && !name.trim()) {
+            setError("Name is required");
+            return;
+          }
           startTransition(async () => {
-            const result = await save(parsed.metadata, value.trim() || null);
+            // Throwing would replace the form with the error page and lose the draft
+            const result = await save(
+              parsed.metadata,
+              value.trim() || null,
+              initialName === undefined ? undefined : name.trim(),
+            ).catch(
+              (): SubmitResult => ({
+                error: "Could not save. Check your connection and try again.",
+              }),
+            );
             setFieldErrors(result.fields ?? {});
             setError(
               result.error ??
@@ -87,6 +103,7 @@ export function DetailsEditor({
             if (!result.error && !result.fields) {
               form.commit();
               setSavedValue(value.trim());
+              setSavedName(name.trim());
               setJustSaved(true);
               router.refresh();
             }
@@ -95,6 +112,15 @@ export function DetailsEditor({
         onChange={() => setJustSaved(false)}
       >
         <Stack gap="md">
+          {initialName !== undefined && (
+            <TextInput
+              label={<ChangedLabel changed={nameChanged}>Name</ChangedLabel>}
+              value={name}
+              onChange={(event) => setName(event.currentTarget.value)}
+              error={fieldErrors.name}
+              required
+            />
+          )}
           {text && (
             <Textarea
               label={

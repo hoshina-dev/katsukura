@@ -20,17 +20,22 @@ import {
   useMetadataForm,
 } from "@/components/backoffice/Metadata";
 import { Section } from "@/components/backoffice/Section";
+import { useUnsavedChanges } from "@/components/backoffice/useUnsavedChanges";
 
 // Fields mirror the API's fixed metadata schema (schema/metadata.schema.json)
 export function AddPartForm() {
   const metadataForm = useMetadataForm();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  // The success redirect is a router navigation, which this doesn't guard
+  useUnsavedChanges(
+    name.trim() !== "" || description.trim() !== "" || metadataForm.dirty,
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const submit = (form: FormData) => {
-    const text = (name: string) => String(form.get(name) ?? "").trim() || null;
-
+  const submit = () => {
     const parsed = metadataForm.toMetadata();
     if (parsed.error !== undefined) {
       setError(parsed.error);
@@ -40,8 +45,8 @@ export function AddPartForm() {
     setError(null);
     startTransition(async () => {
       const result = await addPart({
-        name: String(form.get("name") ?? "").trim(),
-        description: text("description"),
+        name: name.trim(),
+        description: description.trim() || null,
         metadata: parsed.metadata,
       });
       // Only reached on failure; success redirects to the new part
@@ -58,7 +63,7 @@ export function AddPartForm() {
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        submit(new FormData(event.currentTarget));
+        submit();
       }}
     >
       <Grid gutter="md">
@@ -67,14 +72,16 @@ export function AddPartForm() {
             <Stack gap="sm">
               <Title order={2}>Unit</Title>
               <TextInput
-                name="name"
                 label="Name"
                 description="The SKU is generated when the unit is created"
+                value={name}
+                onChange={(event) => setName(event.currentTarget.value)}
                 required
               />
               <Textarea
-                name="description"
                 label="Description"
+                value={description}
+                onChange={(event) => setDescription(event.currentTarget.value)}
                 autosize
                 minRows={2}
               />

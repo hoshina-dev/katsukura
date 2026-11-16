@@ -8,6 +8,8 @@ interface ConfirmModalProps {
   message: string;
   confirmLabel: string;
   loading?: boolean;
+  // The action can't run; only Cancel is offered
+  hideConfirm?: boolean;
   // Why the last attempt failed
   error?: string | null;
   onConfirm: () => void;
@@ -20,6 +22,7 @@ export function ConfirmModal({
   message,
   confirmLabel,
   loading,
+  hideConfirm,
   error,
   onConfirm,
   onClose,
@@ -34,11 +37,13 @@ export function ConfirmModal({
       )}
       <Group justify="flex-end" mt="lg">
         <Button variant="default" onClick={onClose}>
-          Cancel
+          {hideConfirm ? "Close" : "Cancel"}
         </Button>
-        <Button color="red" loading={loading} onClick={onConfirm}>
-          {confirmLabel}
-        </Button>
+        {!hideConfirm && (
+          <Button color="red" loading={loading} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        )}
       </Group>
     </Modal>
   );

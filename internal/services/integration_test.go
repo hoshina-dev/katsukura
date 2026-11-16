@@ -580,17 +580,27 @@ func TestArchivePartTakesItsItems(t *testing.T) {
 		must(e)
 		return page.Total
 	}
-	box, leg := &models.Part{Name: "Box"}, &models.Part{Name: "Leg"}
+	box, leg := &models.Part{Name: "Box", Description: ptr("Oak with lid")}, &models.Part{Name: "Leg"}
 	must(s.CreatePart(ctx, box))
 	must(s.CreatePart(ctx, leg))
-	must(s.CreateComponent(ctx, box.ID, &models.PartComponent{ChildPartID: leg.ID, Slot: "leg", RequiredQuantity: 2}))
+	legSlot := &models.PartComponent{ChildPartID: leg.ID, Slot: "leg", RequiredQuantity: 2}
+	must(s.CreateComponent(ctx, box.ID, legSlot))
+	// A BOM with no item history only needs the row removed
+	if e = s.ArchivePart(ctx, leg.ID); e == nil || e.Error() != "Leg is used in the BOM of Box; remove it there first" {
+		t.Fatalf("part in unused BOM: %v", e)
+	}
+	found, e := s.Parts(ctx, models.Filter{Search: "with lid", Limit: 10})
+	must(e)
+	if found.Total != 1 || found.Data[0].ComponentCount == nil || *found.Data[0].ComponentCount != 1 {
+		t.Fatalf("description search or component count: %+v", found)
+	}
 	_, e = s.CreateItems(ctx, leg.ID, 5, nil)
 	must(e)
 	_, e = s.CreateItems(ctx, box.ID, 2, nil)
 	must(e)
 
 	// Leg units sit inside boxes and Leg is in Box's BOM: nothing changes
-	if e = s.ArchivePart(ctx, leg.ID); e == nil || e.Error() != "Leg is used in the BOM of Box; remove it there first" {
+	if e = s.ArchivePart(ctx, leg.ID); e == nil || e.Error() != "Leg is used in the BOM of Box; delete Box first" {
 		t.Fatalf("part with installed items: %v", e)
 	}
 	if count(leg, false) != 5 || count(box, false) != 2 {
@@ -601,6 +611,10 @@ func TestArchivePartTakesItsItems(t *testing.T) {
 	must(s.ArchivePart(ctx, box.ID))
 	if count(box, false) != 0 || count(leg, true) != 5 {
 		t.Fatalf("boxes %d, free legs %d", count(box, false), count(leg, true))
+	}
+	// No items are left, but the slot's history still keeps it
+	if e = s.DeleteComponent(ctx, box.ID, legSlot.ID); e == nil || e.Error() != "The leg slot has installation history, so it cannot be removed" {
+		t.Fatalf("slot with history: %v", e)
 	}
 }
 

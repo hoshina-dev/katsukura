@@ -47,9 +47,14 @@ interface BomSectionProps {
   partId: string;
   // Direct BOM rows, with child_part loaded
   components: PartComponent[];
+  // The unit has items, which the API keeps matching the current BOM
+  locked: boolean;
 }
 
-export function BomSection({ partId, components }: BomSectionProps) {
+const LOCKED_NOTE =
+  "This bill of materials stays fixed while the unit has items. Delete its items first to change it.";
+
+export function BomSection({ partId, components, locked }: BomSectionProps) {
   const router = useRouter();
   const hasComponents = components.length > 0;
   const [open, setOpen] = useState(hasComponents);
@@ -59,14 +64,21 @@ export function BomSection({ partId, components }: BomSectionProps) {
 
   if (!open && !hasComponents) {
     return (
-      <Group>
+      <Group gap="sm">
         <Button
           variant="default"
           leftSection={<IconPlus size={16} />}
           onClick={() => setOpen(true)}
+          disabled={locked}
         >
           Add bill of materials
         </Button>
+        {locked && (
+          <Text size="xs" c="dimmed">
+            A unit with items can't get a bill of materials. Delete its items
+            first.
+          </Text>
+        )}
       </Group>
     );
   }
@@ -92,6 +104,7 @@ export function BomSection({ partId, components }: BomSectionProps) {
           size="xs"
           color="red"
           variant="subtle"
+          disabled={locked && hasComponents}
           onClick={() => (hasComponents ? setConfirming(true) : setOpen(false))}
         >
           {hasComponents ? "Remove BOM" : "Cancel"}
@@ -104,7 +117,8 @@ export function BomSection({ partId, components }: BomSectionProps) {
             {error}
           </Alert>
         )}
-        <BomEditor partId={partId} components={components} />
+        {locked && <EmptyNote>{LOCKED_NOTE}</EmptyNote>}
+        <BomEditor partId={partId} components={components} locked={locked} />
       </Stack>
       <ConfirmModal
         opened={confirming}
@@ -124,9 +138,11 @@ export function BomSection({ partId, components }: BomSectionProps) {
 function BomEditor({
   partId,
   components,
+  locked,
 }: {
   partId: string;
   components: PartComponent[];
+  locked: boolean;
 }) {
   const router = useRouter();
   const [errors, setErrors] = useState<string[]>([]);
@@ -144,7 +160,9 @@ function BomEditor({
   return (
     <Stack gap="md">
       {components.length === 0 ? (
-        <EmptyNote>No components yet. Pick a unit below to add the first slot.</EmptyNote>
+        <EmptyNote>
+          No components yet. Pick a unit below to add the first slot.
+        </EmptyNote>
       ) : (
         <Box style={{ overflowX: "auto" }} mx="-md">
           <Table verticalSpacing={8} horizontalSpacing="md" miw={560}>
@@ -162,6 +180,7 @@ function BomEditor({
                   key={`${component.id}-${component.required_quantity}`}
                   component={component}
                   pending={pending}
+                  locked={locked}
                   onSave={(patch) =>
                     run(() => updateBomChild(partId, component.id, patch))
                   }
@@ -177,18 +196,23 @@ function BomEditor({
           {line}
         </Text>
       ))}
-      <AddChild
-        pending={pending}
-        onAdd={(component, reset) =>
-          run(() => addBomChild(partId, component), reset)
-        }
-      />
+      {!locked && (
+        <AddChild
+          partId={partId}
+          pending={pending}
+          onAdd={(component, reset) =>
+            run(() => addBomChild(partId, component), reset)
+          }
+        />
+      )}
       <ConfirmModal
         opened={deleting !== null}
         title="Remove component?"
         message={`The ${deleting?.slot ?? ""} slot (${deleting?.child_part?.name ?? "unknown unit"}) is removed from the bill of materials. This cannot be undone.`}
         confirmLabel="Remove"
         loading={pending}
+        // The page behind the dialog can't be seen, so say why the slot stayed
+        error={deleting ? errors.join("; ") || null : null}
         onConfirm={() => {
           if (!deleting) return;
           run(
@@ -196,7 +220,10 @@ function BomEditor({
             () => setDeleting(null),
           );
         }}
-        onClose={() => setDeleting(null)}
+        onClose={() => {
+          setDeleting(null);
+          setErrors([]);
+        }}
       />
     </Stack>
   );
@@ -205,11 +232,13 @@ function BomEditor({
 function BomRow({
   component,
   pending,
+  locked,
   onSave,
   onDelete,
 }: {
   component: PartComponent;
   pending: boolean;
+  locked: boolean;
   onSave: (patch: { required_quantity: number }) => void;
   onDelete: () => void;
 }) {
@@ -223,9 +252,7 @@ function BomRow({
     <TableTr>
       <TableTd>
         {child ? (
-          <TextLink href={skuHref(child.sku)}>
-            {child.name}
-          </TextLink>
+          <TextLink href={skuHref(child.sku)}>{child.name}</TextLink>
         ) : (
           component.child_part_id.slice(0, 8)
         )}
@@ -244,6 +271,7 @@ function BomRow({
           allowDecimal={false}
           allowNegative={false}
           size="xs"
+          disabled={locked}
         />
       </TableTd>
       <TableTd>
@@ -263,6 +291,7 @@ function BomRow({
             variant="subtle"
             color="gray"
             aria-label={`Delete ${component.slot}`}
+            disabled={locked}
             onClick={onDelete}
           >
             <IconTrash size={16} stroke={1.5} />
@@ -276,9 +305,11 @@ function BomRow({
 type PartOption = { id: string; sku: string; name: string };
 
 function AddChild({
+  partId,
   pending,
   onAdd,
 }: {
+  partId: string;
   pending: boolean;
   onAdd: (
     component: {
@@ -292,19 +323,22 @@ function AddChild({
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
   const [options, setOptions] = useState<PartOption[]>([]);
+  const [more, setMore] = useState(false);
   const [childId, setChildId] = useState<string | null>(null);
   const [slot, setSlot] = useState("");
   const [quantity, setQuantity] = useState<string | number>(1);
 
   useEffect(() => {
     let current = true;
-    findParts(debounced).then((parts) => {
-      if (current) setOptions(parts);
+    findParts(debounced, partId).then((result) => {
+      if (!current) return;
+      setOptions(result.parts);
+      setMore(result.more);
     });
     return () => {
       current = false;
     };
-  }, [debounced]);
+  }, [debounced, partId]);
 
   const reset = () => {
     setChildId(null);
@@ -323,6 +357,9 @@ function AddChild({
       <Select
         label="Add component"
         placeholder="Search units by name or SKU"
+        description={
+          more ? "Showing the first matches; search to find others" : undefined
+        }
         searchable
         clearable
         value={childId}
