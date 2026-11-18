@@ -1,19 +1,25 @@
-import { Grid, GridCol, Stack, Text } from "@mantine/core";
-import { notFound, redirect } from "next/navigation";
+import { Grid, GridCol, Skeleton, Stack, Text } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
 
+import { PageError } from "@/app/error";
 import { savePart } from "@/app/actions";
+import { NotFound } from "@/app/not-found";
 import {
   imageUrls,
+  type Item,
   ITEMS_PAGE_PARAM,
   ITEMS_PAGE_SIZE,
   ITEMS_SEARCH_PARAM,
+  type List,
   pageParam,
   type PartComponent,
+  type PartDetail,
   type SearchParams,
   skuHref,
   textParam,
 } from "@/libs/inventory";
 import { findPartBySku, listItems } from "@/libs/katsukuraApi";
+import { navigate, useRefreshToken } from "@/libs/nav";
 
 import { BomSection } from "./BomSection";
 import { DetailsEditor } from "./DetailsEditor";
@@ -24,33 +30,94 @@ import { Section } from "./Section";
 import { StockCounts } from "./StockCounts";
 import { TextLink } from "./TextLink";
 
-export async function SkuDetail({
+type Loaded = {
+  part: PartDetail;
+  items: List<Item>;
+  page: number;
+  search: string;
+};
+
+export function SkuDetail({
   sku,
   params,
 }: {
   sku: string;
   params: SearchParams;
 }) {
-  const part = await findPartBySku(decodeURIComponent(sku));
-  if (!part) notFound();
+  const token = useRefreshToken();
+  const queryKey = JSON.stringify([sku, params]);
+  const seen = useRef(queryKey);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "missing" }
+    | { status: "error"; message: string }
+    | { status: "ready"; data: Loaded }
+  >({ status: "loading" });
 
+  useEffect(() => {
+    let cancel = false;
+    if (seen.current !== queryKey) {
+      seen.current = queryKey;
+      setState({ status: "loading" });
+    }
+    const page = pageParam(params, ITEMS_PAGE_PARAM);
+    const search = textParam(params, ITEMS_SEARCH_PARAM);
+    findPartBySku(sku)
+      .then(async (part) => {
+        if (cancel) return;
+        if (!part) {
+          setState({ status: "missing" });
+          return;
+        }
+        const items = await listItems(part.id, {
+          limit: ITEMS_PAGE_SIZE,
+          offset: (page - 1) * ITEMS_PAGE_SIZE,
+          search: search || undefined,
+        });
+        if (cancel) return;
+        const lastPage = Math.max(1, Math.ceil(items.total / ITEMS_PAGE_SIZE));
+        // e.g. the only row on the last page was deleted
+        if (items.data.length === 0 && page > lastPage) {
+          const next = new URLSearchParams();
+          if (search) next.set(ITEMS_SEARCH_PARAM, search);
+          if (lastPage > 1) next.set(ITEMS_PAGE_PARAM, String(lastPage));
+          const query = next.toString();
+          navigate(skuHref(part.sku) + (query ? `?${query}` : ""), true);
+          return;
+        }
+        setState({ status: "ready", data: { part, items, page, search } });
+      })
+      .catch((error: unknown) => {
+        if (!cancel) {
+          setState({
+            status: "error",
+            message:
+              error instanceof Error ? error.message : "Could not load this unit",
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [queryKey, token, sku, params]);
+
+  if (state.status === "loading") return <Pending />;
+  if (state.status === "missing") return <NotFound />;
+  if (state.status === "error") return <PageError message={state.message} />;
+  return <SkuBody {...state.data} />;
+}
+
+function Pending() {
+  return (
+    <Stack gap="md">
+      <Skeleton height={28} width={240} />
+      <Skeleton height={220} />
+    </Stack>
+  );
+}
+
+function SkuBody({ part, items, page, search }: Loaded) {
   const images = imageUrls(part.metadata);
-  const page = pageParam(params, ITEMS_PAGE_PARAM);
-  const search = textParam(params, ITEMS_SEARCH_PARAM);
-  const items = await listItems(part.id, {
-    limit: ITEMS_PAGE_SIZE,
-    offset: (page - 1) * ITEMS_PAGE_SIZE,
-    search: search || undefined,
-  });
-  // e.g. the only row on the last page was deleted
-  const lastPage = Math.max(1, Math.ceil(items.total / ITEMS_PAGE_SIZE));
-  if (items.data.length === 0 && page > lastPage) {
-    const next = new URLSearchParams();
-    if (search) next.set(ITEMS_SEARCH_PARAM, search);
-    if (lastPage > 1) next.set(ITEMS_PAGE_PARAM, String(lastPage));
-    const query = next.toString();
-    redirect(skuHref(part.sku) + (query ? `?${query}` : ""));
-  }
   // Deleted parents keep their BOM rows but no longer use this unit
   const usedIn = part.parents.filter(
     (row) => row.parent_part && !row.parent_part.archived_at,

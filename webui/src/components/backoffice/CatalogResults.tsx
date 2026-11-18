@@ -1,7 +1,8 @@
 import { Box, Group, SimpleGrid, Skeleton, Stack, Text } from "@mantine/core";
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { PageError } from "@/app/error";
+import { Link, navigate, useRefreshToken } from "@/libs/nav";
 
 import {
   CATALOG_PAGE_SIZE,
@@ -136,27 +137,69 @@ function pageHref(query: CatalogQuery, view: CatalogView, page: number) {
   return search ? `/?${search}` : "/";
 }
 
-export async function CatalogResults({
+export function CatalogResults({
   query,
   view,
 }: {
   query: CatalogQuery;
   view: CatalogView;
 }) {
-  // The table scrolls from the start; the grid shows one page at a time
-  const [{ entries, total }, serials] = await Promise.all([
-    view === "table"
-      ? getCatalog({ ...query, page: 1 }, LIST_PAGE_SIZE)
-      : getCatalog(query),
-    query.search ? findItemsBySerial(query.search) : [],
-  ]);
+  const token = useRefreshToken();
+  const queryKey = JSON.stringify([query, view]);
+  const seen = useRef(queryKey);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | {
+        status: "ready";
+        entries: CatalogEntry[];
+        total: number;
+        serials: Item[];
+      }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    let cancel = false;
+    if (seen.current !== queryKey) {
+      seen.current = queryKey;
+      setState({ status: "loading" });
+    }
+    // The table scrolls from the start; the grid shows one page at a time
+    Promise.all([
+      view === "table"
+        ? getCatalog({ ...query, page: 1 }, LIST_PAGE_SIZE)
+        : getCatalog(query),
+      query.search ? findItemsBySerial(query.search) : Promise.resolve([]),
+    ])
+      .then(([{ entries, total }, serials]) => {
+        if (cancel) return;
+        const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
+        // e.g. the last card on a later page was deleted
+        if (entries.length === 0 && total > 0 && query.page > pageCount) {
+          navigate(pageHref(query, view, pageCount), true);
+          return;
+        }
+        setState({ status: "ready", entries, total, serials });
+      })
+      .catch((error: unknown) => {
+        if (!cancel) {
+          setState({
+            status: "error",
+            message:
+              error instanceof Error ? error.message : "Could not load units",
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [queryKey, token, query, view]);
+
+  if (state.status === "loading") return <CatalogSkeleton view={view} />;
+  if (state.status === "error") return <PageError message={state.message} />;
+
+  const { entries, total, serials } = state;
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
-
-  // e.g. the last card on a later page was deleted
-  if (entries.length === 0 && total > 0 && query.page > pageCount) {
-    redirect(pageHref(query, view, pageCount));
-  }
-
   const matches = <SerialMatches items={serials} search={query.search} />;
 
   if (entries.length === 0) {
@@ -228,12 +271,7 @@ export function Catalog({ params }: { params: SearchParams }) {
     <Stack gap="md">
       <PageHeader title="Units" />
       <CatalogToolbar />
-      <Suspense
-        key={JSON.stringify([query, view])}
-        fallback={<CatalogSkeleton view={view} />}
-      >
-        <CatalogResults query={query} view={view} />
-      </Suspense>
+      <CatalogResults query={query} view={view} />
     </Stack>
   );
 }

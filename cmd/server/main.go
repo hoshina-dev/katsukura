@@ -14,9 +14,11 @@ import (
 
 	"github.com/hoshina-dev/katsukura/internal/config"
 	"github.com/hoshina-dev/katsukura/internal/database"
+	"github.com/hoshina-dev/katsukura/internal/handlers"
 	"github.com/hoshina-dev/katsukura/internal/repositories"
 	"github.com/hoshina-dev/katsukura/internal/routes"
 	"github.com/hoshina-dev/katsukura/internal/services"
+	"github.com/hoshina-dev/katsukura/internal/storage"
 )
 
 func main() {
@@ -56,8 +58,21 @@ func run() error {
 			return fmt.Errorf("migrate database: %w", err)
 		}
 	}
+	if cfg.StaticDir != "" {
+		info, statErr := os.Stat(cfg.StaticDir)
+		if statErr != nil || !info.IsDir() {
+			if statErr == nil {
+				statErr = fmt.Errorf("not a directory")
+			}
+			return fmt.Errorf("STATIC_DIR %s: %w", cfg.StaticDir, statErr)
+		}
+	}
+	var images handlers.ImageStore
+	if cfg.S3.Bucket != "" {
+		images = storage.New(cfg.S3)
+	}
 	service := services.New(repositories.New(db))
-	app := routes.NewApp(service, pool.PingContext)
+	app := routes.New(service, pool.PingContext, routes.Options{StaticDir: cfg.StaticDir, Images: images})
 	serverErrors := make(chan error, 1)
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	go func() {

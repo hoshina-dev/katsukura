@@ -3,7 +3,9 @@
 .env
 .env.*
 bin
-webui
+webui/node_modules
+webui/dist
+webui/.next
 .pnpm-store
 artifacts
 coverage.out

@@ -38,6 +38,7 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
 		{"PORT", "abc"}, {"PORT", "0"}, {"PORT", "65536"},
 		{"AUTO_MIGRATE", "sometimes"}, {"SHUTDOWN_TIMEOUT", "bad"}, {"SHUTDOWN_TIMEOUT", "0s"},
+		{"S3_BUCKET_NAME", "photos"},
 	} {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
 			_, err := Load(func(key string) string {

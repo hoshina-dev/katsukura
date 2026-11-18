@@ -4,11 +4,11 @@ Part catalog and physical inventory management. A Part schema is identified by S
 each inventory row represents one physical item. Both catalog composition and item
 ownership support nesting.
 
-The backend uses Go, Fiber, GORM, and PostgreSQL and serves only the JSON API.
-The backoffice in `webui/` is a separate Next.js (App Router) app using React,
-TypeScript, Mantine, and Tabler icons. It is for staff managing parts, stock and
-BOMs; customer-facing browsing lives in another frontend. Its server components call the API
-through `KATSUKURA_API_URL`, so the browser never talks to the Go server directly.
+The backend uses Go, Fiber, GORM, and PostgreSQL. It serves the JSON API and,
+when `STATIC_DIR` is set, the staff backoffice from the same process. The
+backoffice in `webui/` is a Vite and React app using TypeScript, Mantine, and
+Tabler icons. The browser calls `/api/v1` on the same origin. Customer-facing
+browsing lives in another frontend.
 
 ## Run locally
 
@@ -16,17 +16,15 @@ Requirements: Go 1.26.2+, Node 22+, pnpm 11.25.0, and PostgreSQL 17+ or Docker.
 
 ```sh
 cp .env.example .env
-cp webui/.env.example webui/.env.local
 docker compose -f docker-compose.dev.yml up -d
 make run          # API on http://localhost:8082
-make webui-dev    # UI on http://localhost:3000 (second terminal)
+make webui-dev    # UI on http://localhost:3000, proxying /api to the API
 ```
 
 The server applies versioned SQL migrations at startup. The development database
 uses port 5438 to avoid the usual local PostgreSQL port. `make build` produces
-`bin/katsukura`; `make webui-start` builds and serves the production UI.
-
-The UI reads `KATSUKURA_API_URL` (default `http://localhost:8082`) on the server side.
+`bin/katsukura`. `make webui-start` builds the UI and serves it from the API
+(`STATIC_DIR=webui/dist`) on port 8082. The published image does the same.
 
 ## Data rules
 
@@ -140,6 +138,7 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/summary` | Active SKU/item and ownership counts |
 | `/metadata/schema` | GET the metadata JSON Schema |
 | `/metadata/validate` | POST metadata; returns it with defaults filled in, as a create would store it, or 400 |
+| `/uploads` | POST one multipart `file` (JPEG, PNG, or WebP, at most 1 MB); returns `{url}` when object storage is configured |
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
 `part_id` and `available=true` (not installed anywhere; this is public stock). Parts
@@ -159,6 +158,13 @@ The server reads `.env` if present. Environment variables take precedence.
 | `DATABASE_URL` | Alias used when `DATA_SOURCE_NAME` is unset |
 | `AUTO_MIGRATE` | `true`; applies explicit SQL migrations |
 | `SHUTDOWN_TIMEOUT` | `10s` |
+| `STATIC_DIR` | empty; directory of the built UI (`index.html` and assets). Empty serves the API only |
+| `S3_ENDPOINT` | empty |
+| `S3_PUBLIC_URL` | empty; falls back to `S3_ENDPOINT` |
+| `S3_ACCESS_KEY` | empty |
+| `S3_SECRET_KEY` | empty |
+| `S3_BUCKET_NAME` | empty; image upload stays disabled until this is set, along with the endpoint and keys |
+| `S3_REGION` | `auto` when a bucket is set |
 
 ## Verify
 
@@ -176,6 +182,5 @@ TEST_DATABASE_URL=postgres://katsukura:katsukura@localhost:5438/katsukura?sslmod
 ```
 
 Integration suites use isolated schemas and exercise database invariants and HTTP
-workflows. CI runs them against PostgreSQL. `make docker-build` builds the API image
-(`katsukura:local`) and the standalone Next.js UI image (`katsukura-webui:local`); run the
-UI container with `KATSUKURA_API_URL` pointing at the API.
+workflows. CI runs them against PostgreSQL. `make docker-build` builds one image,
+`katsukura:local`, which serves the API and the backoffice on port 8082.

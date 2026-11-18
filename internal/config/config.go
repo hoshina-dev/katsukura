@@ -12,6 +12,19 @@ type Config struct {
 	DataSourceName  string
 	Migrate         bool
 	ShutdownTimeout time.Duration
+	// StaticDir is the built backoffice. Empty serves the API only.
+	StaticDir string
+	S3        S3Config
+}
+
+// S3Config is optional. A bucket enables part-image upload.
+type S3Config struct {
+	Endpoint  string
+	PublicURL string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	Region    string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -46,6 +59,26 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("SHUTDOWN_TIMEOUT must be a positive duration")
 		}
 		cfg.ShutdownTimeout = duration
+	}
+	cfg.StaticDir = strings.TrimSpace(getenv("STATIC_DIR"))
+	cfg.S3 = S3Config{
+		Endpoint:  strings.TrimRight(strings.TrimSpace(getenv("S3_ENDPOINT")), "/"),
+		PublicURL: strings.TrimRight(strings.TrimSpace(getenv("S3_PUBLIC_URL")), "/"),
+		AccessKey: strings.TrimSpace(getenv("S3_ACCESS_KEY")),
+		SecretKey: strings.TrimSpace(getenv("S3_SECRET_KEY")),
+		Bucket:    strings.TrimSpace(getenv("S3_BUCKET_NAME")),
+		Region:    strings.TrimSpace(getenv("S3_REGION")),
+	}
+	if cfg.S3.Bucket != "" {
+		if cfg.S3.Endpoint == "" || cfg.S3.AccessKey == "" || cfg.S3.SecretKey == "" {
+			return Config{}, fmt.Errorf("S3_ENDPOINT, S3_ACCESS_KEY and S3_SECRET_KEY are required when S3_BUCKET_NAME is set")
+		}
+		if cfg.S3.Region == "" {
+			cfg.S3.Region = "auto"
+		}
+		if cfg.S3.PublicURL == "" {
+			cfg.S3.PublicURL = cfg.S3.Endpoint
+		}
 	}
 	return cfg, nil
 }

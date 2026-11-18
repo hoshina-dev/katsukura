@@ -3,8 +3,6 @@ import {
   DEFAULT_THEME,
   type MantineColorsTuple,
 } from "@mantine/core";
-import { GeistMono } from "geist/font/mono";
-import { GeistSans } from "geist/font/sans";
 
 // Deep teal; shade 8 is the primary so white button text clears 4.5:1
 const signal: MantineColorsTuple = [
@@ -21,8 +19,8 @@ const signal: MantineColorsTuple = [
 ];
 
 export const theme = createTheme({
-  fontFamily: `${GeistSans.style.fontFamily}, ${DEFAULT_THEME.fontFamily}`,
-  fontFamilyMonospace: `${GeistMono.style.fontFamily}, ${DEFAULT_THEME.fontFamilyMonospace}`,
+  fontFamily: `Geist Sans, ${DEFAULT_THEME.fontFamily}`,
+  fontFamilyMonospace: `Geist Mono, ${DEFAULT_THEME.fontFamilyMonospace}`,
   colors: { signal },
   primaryColor: "signal",
   primaryShade: 8,
