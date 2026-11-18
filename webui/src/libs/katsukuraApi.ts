@@ -77,6 +77,8 @@ function send<T>(method: string, path: string, body?: unknown) {
 export const partTag = (partId: string) => `part:${partId}`;
 // Part details carry stock counts, which any item change can move
 export const ITEMS_TAG = "items";
+// Shared tag so a child price or BOM change refreshes every part read
+export const PARTS_TAG = "parts";
 
 function qs(params: Record<string, string | number | undefined>) {
   const search = new URLSearchParams();
@@ -89,6 +91,8 @@ function qs(params: Record<string, string | number | undefined>) {
 // The API generates the SKU when it is omitted
 export type NewPart = Pick<Part, "name" | "description" | "metadata"> & {
   sku?: string;
+  composite_price?: string;
+  unit_price?: string | null;
 };
 
 export function createPart(part: NewPart) {
@@ -97,7 +101,12 @@ export function createPart(part: NewPart) {
 
 export function updatePart(
   id: string,
-  patch: Partial<Pick<Part, "name" | "description" | "metadata">>,
+  patch: Partial<
+    Pick<
+      Part,
+      "name" | "description" | "metadata" | "composite_price" | "unit_price"
+    >
+  >,
 ) {
   return send<Part>("PATCH", `/parts/${id}`, patch);
 }
@@ -128,6 +137,7 @@ export function getPart(id: string) {
   return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS, [
     partTag(id),
     ITEMS_TAG,
+    PARTS_TAG,
   ]);
 }
 
@@ -233,6 +243,7 @@ function toEntry(part: Part): CatalogEntry {
     imageUrl: imageUrls(part.metadata)[0] ?? null,
     stock: part.stock ?? { total: 0, in_use: 0, available: 0 },
     componentCount: part.component_count ?? 0,
+    effectiveUnitPrice: part.effective_unit_price ?? part.composite_price ?? "0.00",
   };
 }
 

@@ -25,6 +25,7 @@ import {
   ITEMS_TAG,
   type NewPart,
   ApiError,
+  PARTS_TAG,
   partTag,
   replaceComponent,
   searchParts,
@@ -154,18 +155,36 @@ export async function partDeleteBlocker(partId: string) {
 }
 
 export async function deletePart(partId: string) {
-  return mutate(() => archivePart(partId), partTag(partId), ITEMS_TAG);
+  return mutate(
+    () => archivePart(partId),
+    partTag(partId),
+    ITEMS_TAG,
+    PARTS_TAG,
+  );
 }
+
+export type PartPrices = {
+  composite_price?: string | null;
+  unit_price?: string | null;
+};
 
 export async function savePart(
   partId: string,
   metadata: Record<string, unknown>,
   description: string | null,
   name?: string,
+  prices?: PartPrices,
 ) {
   return mutate(
-    () => updatePart(partId, { description, metadata, name }),
+    () =>
+      updatePart(partId, {
+        description,
+        metadata,
+        name,
+        ...prices,
+      }),
     partTag(partId),
+    PARTS_TAG,
   );
 }
 
@@ -187,6 +206,7 @@ export async function removeBom(partId: string, componentIds: string[]) {
   );
   updateTag(partTag(partId));
   updateTag(ITEMS_TAG);
+  updateTag(PARTS_TAG);
   return result;
 }
 
@@ -234,6 +254,7 @@ export async function addBomChild(partId: string, component: NewComponent) {
     () => createComponent(partId, component),
     partTag(partId),
     ITEMS_TAG,
+    PARTS_TAG,
   );
 }
 
@@ -246,6 +267,7 @@ export async function updateBomChild(
     () => updateComponent(partId, componentId, patch),
     partTag(partId),
     ITEMS_TAG,
+    PARTS_TAG,
   );
 }
 
@@ -254,5 +276,6 @@ export async function deleteBomChild(partId: string, componentId: string) {
     () => deleteComponent(partId, componentId),
     partTag(partId),
     ITEMS_TAG,
+    PARTS_TAG,
   );
 }

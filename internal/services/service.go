@@ -41,7 +41,7 @@ func (s *Service) Parts(ctx context.Context, f models.Filter) (models.Page[model
 	})
 }
 
-// withStock fills each part's item and BOM row counts.
+// withStock fills each part's item and BOM row counts and resolves prices.
 func withStock(ctx context.Context, r Store, parts []models.Part) error {
 	ids := make([]uuid.UUID, len(parts))
 	for i, p := range parts {
@@ -52,11 +52,14 @@ func withStock(ctx context.Context, r Store, parts []models.Part) error {
 		return e
 	}
 	counts, e := r.ComponentCounts(ctx, ids)
+	if e != nil {
+		return e
+	}
 	for i, p := range parts {
 		v, n := stock[p.ID], counts[p.ID]
 		parts[i].Stock, parts[i].ComponentCount = &v, &n
 	}
-	return e
+	return r.ResolvePrices(ctx, parts)
 }
 func (s *Service) Items(ctx context.Context, f models.Filter) (models.Page[models.InventoryItem], error) {
 	return read(ctx, s, func(r Store) (models.Page[models.InventoryItem], error) { return r.Items(ctx, f) })
@@ -164,11 +167,37 @@ func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
 	p.Description = trimNullable(p.Description)
 	p.ID = uuid.New()
 	p.ArchivedAt = nil
+	if p.CompositePrice == "" {
+		p.CompositePrice = models.ZeroMoney
+	} else {
+		parsed, e := models.ParseMoney(string(p.CompositePrice))
+		if e != nil {
+			return apperrors.Invalid("composite_price must be a non-negative amount with at most two decimal places")
+		}
+		p.CompositePrice = parsed
+	}
+	if p.UnitPrice != nil {
+		parsed, e := models.ParseMoney(string(*p.UnitPrice))
+		if e != nil {
+			return apperrors.Invalid("unit_price must be a non-negative amount with at most two decimal places")
+		}
+		p.UnitPrice = &parsed
+	}
 	var e error
 	if p.Metadata, e = NewMetadata(p.Metadata); e != nil {
 		return e
 	}
-	return s.write(ctx, func(r Store) error { return r.Create(ctx, p) })
+	return s.write(ctx, func(r Store) error {
+		if e := r.Create(ctx, p); e != nil {
+			return e
+		}
+		parts := []models.Part{*p}
+		if e := r.ResolvePrices(ctx, parts); e != nil {
+			return e
+		}
+		*p = parts[0]
+		return nil
+	})
 }
 func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error {
 	if i.PartID == uuid.Nil {
@@ -422,18 +451,38 @@ func (s *Service) ArchiveItem(ctx context.Context, id uuid.UUID) error {
 	})
 }
 func (s *Service) UpdatePart(ctx context.Context, id uuid.UUID, p map[string]any) (v *models.Part, e error) {
-	if e = validatePatch(p, "sku name description metadata archived_at"); e != nil {
+	if e = validatePatch(p, "sku name description metadata archived_at composite_price unit_price"); e != nil {
 		return
 	}
 	e = s.write(ctx, func(r Store) error {
 		if _, e := r.GetPart(ctx, id); e != nil {
 			return e
 		}
+		if raw, ok := p["composite_price"]; ok {
+			price, _ := raw.(models.Money)
+			if price != models.ZeroMoney {
+				slots, e := r.Components(ctx, id)
+				if e != nil {
+					return e
+				}
+				if len(slots) > 0 {
+					return apperrors.Invalid("composite_price can only be set on parts without a bill of materials")
+				}
+			}
+		}
 		if e := r.Update(ctx, &models.Part{}, id, p); e != nil {
 			return e
 		}
 		v, e = r.GetPart(ctx, id)
-		return e
+		if e != nil {
+			return e
+		}
+		parts := []models.Part{*v}
+		if e := r.ResolvePrices(ctx, parts); e != nil {
+			return e
+		}
+		*v = parts[0]
+		return nil
 	})
 	return
 }
@@ -530,6 +579,26 @@ func validatePatch(p map[string]any, allowed string) error {
 				return apperrors.Invalid("required_quantity must be a positive integer")
 			}
 			p[k] = int(n)
+		case "composite_price":
+			if v == nil {
+				p[k] = models.ZeroMoney
+				continue
+			}
+			m, err := models.MoneyFrom(v)
+			if err != nil {
+				return apperrors.Invalid("composite_price must be a non-negative amount with at most two decimal places")
+			}
+			p[k] = m
+		case "unit_price":
+			if v == nil {
+				p[k] = nil
+				continue
+			}
+			m, err := models.MoneyFrom(v)
+			if err != nil {
+				return apperrors.Invalid("unit_price must be a non-negative amount with at most two decimal places")
+			}
+			p[k] = m
 		case "description", "serial_number":
 			if v == nil {
 				continue

@@ -618,4 +618,99 @@ func TestArchivePartTakesItsItems(t *testing.T) {
 	}
 }
 
+func TestPartPrices(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	admin, e := database.Connect(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	adminPool, _ := admin.DB()
+	defer adminPool.Close()
+	schema := "price_" + uuid.New().String()[:8]
+	if e = admin.Exec("CREATE SCHEMA " + schema).Error; e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
+	u, e := url.Parse(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+	db, e := database.Connect(u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	pool, _ := db.DB()
+	defer pool.Close()
+	if e = database.Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	s := services.New(repositories.New(db))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	leaf := &models.Part{SKU: "LEAF", Name: "Leaf"}
+	must(s.CreatePart(ctx, leaf))
+	if leaf.CompositePrice != models.ZeroMoney || leaf.EffectiveUnitPrice != models.ZeroMoney || leaf.UnitPrice != nil {
+		t.Fatalf("default prices: %+v", leaf)
+	}
+
+	updated, e := s.UpdatePart(ctx, leaf.ID, map[string]any{"composite_price": "10.5"})
+	must(e)
+	if updated.CompositePrice != "10.50" || updated.EffectiveUnitPrice != "10.50" {
+		t.Fatalf("leaf composite: %+v", updated)
+	}
+	override := models.Money("20.00")
+	updated, e = s.UpdatePart(ctx, leaf.ID, map[string]any{"unit_price": override})
+	must(e)
+	if updated.UnitPrice == nil || *updated.UnitPrice != "20.00" || updated.EffectiveUnitPrice != "20.00" || updated.CompositePrice != "10.50" {
+		t.Fatalf("unit override: %+v", updated)
+	}
+	updated, e = s.UpdatePart(ctx, leaf.ID, map[string]any{"unit_price": nil})
+	must(e)
+	if updated.UnitPrice != nil || updated.EffectiveUnitPrice != "10.50" {
+		t.Fatalf("clear override: %+v", updated)
+	}
+
+	free := &models.Part{SKU: "FREE", Name: "Free"}
+	must(s.CreatePart(ctx, free))
+	parent := &models.Part{SKU: "PARENT", Name: "Parent"}
+	must(s.CreatePart(ctx, parent))
+	must(patch(s.UpdatePart)(ctx, parent.ID, map[string]any{"composite_price": "99.00"}))
+	must(s.CreateComponent(ctx, parent.ID, &models.PartComponent{ChildPartID: leaf.ID, Slot: "a", RequiredQuantity: 2}))
+	must(s.CreateComponent(ctx, parent.ID, &models.PartComponent{ChildPartID: free.ID, Slot: "b", RequiredQuantity: 1}))
+
+	detail, e := s.Part(ctx, parent.ID)
+	must(e)
+	if detail.CompositePrice != "21.00" || detail.EffectiveUnitPrice != "21.00" {
+		t.Fatalf("rollup: composite=%s effective=%s", detail.CompositePrice, detail.EffectiveUnitPrice)
+	}
+	var stored models.Money
+	must(db.Raw("SELECT composite_price FROM parts WHERE id = ?", parent.ID).Scan(&stored).Error)
+	if stored != models.ZeroMoney {
+		t.Fatalf("stored parent composite not cleared: %s", stored)
+	}
+	if e = patch(s.UpdatePart)(ctx, parent.ID, map[string]any{"composite_price": "5.00"}); e == nil {
+		t.Fatal("set composite on assembly")
+	}
+	grand := &models.Part{SKU: "GRAND", Name: "Grand"}
+	must(s.CreatePart(ctx, grand))
+	must(s.CreateComponent(ctx, grand.ID, &models.PartComponent{ChildPartID: parent.ID, Slot: "p", RequiredQuantity: 3}))
+	detail, e = s.Part(ctx, grand.ID)
+	must(e)
+	if detail.CompositePrice != "63.00" {
+		t.Fatalf("nested rollup: %s", detail.CompositePrice)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

@@ -40,10 +40,26 @@ func TestNewMetadataFillsDefaults(t *testing.T) {
 	}
 }
 func TestInvalidPatch(t *testing.T) {
-	for _, p := range []map[string]any{{"metadata": nil}, {"metadata": map[string]any{"image_url": "x"}}, {"metadata": map[string]any{"category": "x"}}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"name": "  "}} {
-		if e := validatePatch(p, "metadata archived_at required_quantity name"); e == nil {
+	for _, p := range []map[string]any{{"metadata": nil}, {"metadata": map[string]any{"image_url": "x"}}, {"metadata": map[string]any{"category": "x"}}, {"archived_at": "2026-01-01"}, {"part_id": "immutable"}, {"required_quantity": float64(1.5)}, {"required_quantity": float64(0)}, {"name": "  "}, {"composite_price": "-1"}, {"composite_price": "1.234"}, {"unit_price": "abc"}} {
+		if e := validatePatch(p, "metadata archived_at required_quantity name composite_price unit_price"); e == nil {
 			t.Fatalf("accepted invalid patch %v", p)
 		}
+	}
+}
+func TestPricePatch(t *testing.T) {
+	p := map[string]any{"composite_price": nil, "unit_price": "12.5"}
+	if e := validatePatch(p, "composite_price unit_price"); e != nil {
+		t.Fatal(e)
+	}
+	if p["composite_price"] != models.ZeroMoney {
+		t.Fatalf("null composite_price: %v", p["composite_price"])
+	}
+	if p["unit_price"] != models.Money("12.50") {
+		t.Fatalf("unit_price: %v", p["unit_price"])
+	}
+	clear := map[string]any{"unit_price": nil}
+	if e := validatePatch(clear, "unit_price"); e != nil || clear["unit_price"] != nil {
+		t.Fatalf("clear unit_price: %v %v", clear, e)
 	}
 }
 func TestDecodeObject(t *testing.T) {
@@ -82,6 +98,19 @@ func (s *parentUsageStore) Stock(context.Context, []uuid.UUID) (map[uuid.UUID]mo
 }
 func (s *parentUsageStore) ComponentCounts(context.Context, []uuid.UUID) (map[uuid.UUID]int64, error) {
 	return nil, nil
+}
+func (s *parentUsageStore) ResolvePrices(_ context.Context, parts []models.Part) error {
+	for i := range parts {
+		if parts[i].CompositePrice == "" {
+			parts[i].CompositePrice = models.ZeroMoney
+		}
+		if parts[i].UnitPrice != nil {
+			parts[i].EffectiveUnitPrice = *parts[i].UnitPrice
+		} else {
+			parts[i].EffectiveUnitPrice = parts[i].CompositePrice
+		}
+	}
+	return nil
 }
 func (s *parentUsageStore) Components(context.Context, uuid.UUID) ([]models.PartComponent, error) {
 	return []models.PartComponent{}, nil

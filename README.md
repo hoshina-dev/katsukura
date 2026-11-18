@@ -128,8 +128,8 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 
 | Resource | Operations |
 |---|---|
-| `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts) |
-| `/parts/:id` | Read with BOM and `stock`, edit, archive, restore |
+| `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts) and prices |
+| `/parts/:id` | Read with BOM, `stock`, and prices; edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
 | `/parts/:id/items` | POST `{count, serial_numbers?}` (1–1000) to build items in one transaction, each with a copy of the part's metadata and its BOM filled from stock; `serial_numbers` has one entry per item, and a blank or missing entry gets a generated `RF-SN-` serial number |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
@@ -140,6 +140,15 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/summary` | Active SKU/item and ownership counts |
 | `/metadata/schema` | GET the metadata JSON Schema |
 | `/metadata/validate` | POST metadata; returns it with defaults filled in, as a create would store it, or 400 |
+
+Parts carry three price fields as decimal strings (`"12.50"`), never floats:
+`composite_price` (resolved from the bill of materials for assemblies; stored only
+on leaf parts, default `"0.00"`), `unit_price` (optional override, or null), and
+`effective_unit_price` (`unit_price` when set, otherwise the composite price).
+Create and PATCH accept `composite_price` and `unit_price`; omit `composite_price`
+on create to store `0.00`, and PATCH it to null to reset to `0.00`. Setting a
+non-zero `composite_price` on a part that has a BOM returns 400. Adding a BOM row
+resets the parent's stored composite price to `0`.
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
 `part_id` and `available=true` (not installed anywhere; this is public stock). Parts

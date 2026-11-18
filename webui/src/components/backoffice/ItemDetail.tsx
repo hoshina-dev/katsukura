@@ -26,6 +26,8 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
   const part = await getPart(item.part_id);
   const parentItem = item.parent?.parent_item;
   const images = imageUrls(item.metadata);
+  const compositePrice = part.composite_price ?? "0.00";
+  const effectiveUnitPrice = part.effective_unit_price ?? "0.00";
 
   return (
     <Stack gap="lg">
@@ -62,6 +64,20 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
                 "Available, not installed"
               )}
             </Text>
+            <Group gap="lg" className="tabular">
+              <Text size="sm" c="dimmed">
+                Composite{" "}
+                <Text span fw={600} c="var(--mantine-color-text)">
+                  {compositePrice}
+                </Text>
+              </Text>
+              <Text size="sm" c="dimmed">
+                Unit price{" "}
+                <Text span fw={600} c="var(--mantine-color-text)">
+                  {effectiveUnitPrice}
+                </Text>
+              </Text>
+            </Group>
           </>
         }
       />
