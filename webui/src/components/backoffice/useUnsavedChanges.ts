@@ -5,12 +5,12 @@ import { useEffect } from "react";
 const MESSAGE = "You have unsaved changes. Leave this page and discard them?";
 
 // While dirty, asks before a tab close or reload and before any in-app link
-// leaves the page. Browser Back is not covered: the App Router can't cancel it.
+// leaves the page. Browser Back is not covered.
 export function useUnsavedChanges(dirty: boolean) {
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    // Capture phase, so this runs before next/link starts navigating
+    // Capture phase, so this runs before the link handler starts navigating
     const guard = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {

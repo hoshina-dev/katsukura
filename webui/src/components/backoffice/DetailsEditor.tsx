@@ -11,7 +11,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/libs/nav";
 import { useState, useTransition } from "react";
 
 import type { SubmitResult } from "@/app/actions";

@@ -49,7 +49,8 @@ export function AddPartForm() {
         description: description.trim() || null,
         metadata: parsed.metadata,
       });
-      // Only reached on failure; success redirects to the new part
+      // Success opens the new part. Staying here means the API rejected it.
+      if (!result.error && !result.fields) return;
       setFieldErrors(result.fields ?? {});
       setError(
         result.error ??

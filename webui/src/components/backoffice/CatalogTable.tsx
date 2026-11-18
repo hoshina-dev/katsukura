@@ -15,7 +15,7 @@ import {
   VisuallyHidden,
 } from "@mantine/core";
 import { useIntersection } from "@mantine/hooks";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/libs/nav";
 import { useEffect, useState } from "react";
 
 import { loadCatalogPage } from "@/app/actions";

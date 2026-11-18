@@ -1,7 +1,7 @@
 "use client";
 
 import { Anchor, Breadcrumbs, Group, Stack, Text, Title } from "@mantine/core";
-import Link from "next/link";
+import { Link } from "@/libs/nav";
 import type { ReactNode } from "react";
 
 interface PageHeaderProps {
