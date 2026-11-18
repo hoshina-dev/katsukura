@@ -11,7 +11,8 @@ vi.mock("@/app/actions", () => ({
   deletePart: vi.fn(),
   partDeleteBlocker: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({
+vi.mock("@/libs/nav", async (original) => ({
+  ...(await original<typeof import("@/libs/nav")>()),
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 // The load-more marker is always in view
@@ -28,6 +29,7 @@ const entry = (n: number): CatalogEntry => ({
   imageUrl: null,
   stock: { total: 0, in_use: 0, available: 0 },
   componentCount: n === 1 ? 2 : 0,
+  effectiveUnitPrice: "0.00",
 });
 
 const query = { search: "", sort: "default" as const, page: 1 };

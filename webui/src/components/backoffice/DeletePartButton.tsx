@@ -2,7 +2,7 @@
 
 import { ActionIcon, Box } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/libs/nav";
 import { useState, useTransition } from "react";
 
 import { deletePart, partDeleteBlocker } from "@/app/actions";

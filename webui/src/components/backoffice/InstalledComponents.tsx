@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconSearch } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/libs/nav";
 import { useEffect, useState, useTransition } from "react";
 
 import { findAvailableItems, replaceItem } from "@/app/actions";

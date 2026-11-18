@@ -1,6 +1,4 @@
-// Katsukura REST client, only used in server components and server actions
-
-import "server-only";
+// Katsukura REST client. The browser calls the API on the same origin.
 
 import {
   CATALOG_PAGE_SIZE,
@@ -17,13 +15,7 @@ import {
   type PartDetail,
 } from "./inventory";
 
-const API_URL = new URL(
-  "/api/v1",
-  process.env.KATSUKURA_API_URL || "http://localhost:8082",
-).href;
-
-// Short cache for lookups that are repeated across catalog pages
-const LOOKUP_TTL_SECONDS = 30;
+const API_URL = "/api/v1";
 
 export type ErrorDetail = { field: string; message: string };
 
@@ -45,24 +37,26 @@ export function isMissing(error: unknown) {
 }
 
 async function request<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(API_URL + path, init);
+  let response: Response;
+  try {
+    response = await fetch(API_URL + path, init);
+  } catch (error) {
+    console.error("API request failed", error);
+    throw new ApiError("Could not reach the inventory API. Try again.", 0);
+  }
   const body = await response.json().catch(() => undefined);
   if (!response.ok) {
     throw new ApiError(
       body?.error?.message || `API request failed (${response.status})`,
       response.status,
-      body?.error?.details,
+      body?.error?.details ?? [],
     );
   }
   return body as T;
 }
 
-// Cached lookups are tagged so server actions can expire them after writes
-function get<T>(path: string, ttl?: number, tags?: string[]) {
-  return request<T>(
-    path,
-    ttl ? { next: { revalidate: ttl, tags } } : { cache: "no-store" },
-  );
+function get<T>(path: string) {
+  return request<T>(path, { cache: "no-store" });
 }
 
 function send<T>(method: string, path: string, body?: unknown) {
@@ -73,10 +67,6 @@ function send<T>(method: string, path: string, body?: unknown) {
     cache: "no-store",
   });
 }
-
-export const partTag = (partId: string) => `part:${partId}`;
-// Part details carry stock counts, which any item change can move
-export const ITEMS_TAG = "items";
 
 function qs(params: Record<string, string | number | undefined>) {
   const search = new URLSearchParams();
@@ -90,6 +80,8 @@ function qs(params: Record<string, string | number | undefined>) {
 export type NewPart = Pick<Part, "name" | "description" | "metadata"> & {
   sku?: string;
   serial_aware?: boolean;
+  composite_price?: string;
+  unit_price?: string | null;
 };
 
 export function createPart(part: NewPart) {
@@ -98,7 +90,11 @@ export function createPart(part: NewPart) {
 
 export function updatePart(
   id: string,
-  patch: Partial<Pick<Part, "name" | "description" | "metadata">>,
+  patch: Partial<Pick<Part, "name" | "description" | "metadata">> & {
+    // null clears / resets: composite_price -> 0.00, unit_price -> no override
+    composite_price?: string | null;
+    unit_price?: string | null;
+  },
 ) {
   return send<Part>("PATCH", `/parts/${id}`, patch);
 }
@@ -132,10 +128,7 @@ export function archiveItem(id: string) {
 }
 
 export function getPart(id: string) {
-  return get<PartDetail>(`/parts/${id}`, LOOKUP_TTL_SECONDS, [
-    partTag(id),
-    ITEMS_TAG,
-  ]);
+  return get<PartDetail>(`/parts/${id}`);
 }
 
 export async function findPartBySku(sku: string) {
@@ -240,6 +233,7 @@ function toEntry(part: Part): CatalogEntry {
     imageUrl: imageUrls(part.metadata)[0] ?? null,
     stock: part.stock ?? { total: 0, in_use: 0, available: 0 },
     componentCount: part.component_count ?? 0,
+    effectiveUnitPrice: part.effective_unit_price ?? part.composite_price ?? "0.00",
   };
 }
 

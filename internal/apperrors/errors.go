@@ -47,7 +47,7 @@ func Translate(err error) error {
 		case "23503":
 			return &Error{Status: 409, Code: "referenced_resource", Message: "Referenced resource does not exist or is still in use"}
 		case "23514":
-			messages := map[string]string{"papi2_bom_cycle": "BOM would contain a cycle", "papi2_item_cycle": "Inventory would contain an ownership cycle", "papi2_slot_match": "Items must match the exact BOM SKUs", "papi2_quantity_cap": "BOM slot quantity would be exceeded", "papi2_active_archived": "Archived resources cannot be in active use", "papi2_part_archive_in_use": "An active BOM cannot reference an archived SKU", "papi2_sku_in_use": "SKU cannot change after use in inventory or a BOM", "papi2_immutable_history": "Installation history is immutable"}
+			messages := map[string]string{"papi2_bom_cycle": "BOM would contain a cycle", "papi2_item_cycle": "Inventory would contain an ownership cycle", "papi2_slot_match": "Items must match the exact BOM SKUs", "papi2_quantity_cap": "BOM slot quantity would be exceeded", "papi2_active_archived": "Archived resources cannot be in active use", "papi2_part_archive_in_use": "An active BOM cannot reference an archived SKU", "papi2_sku_in_use": "SKU cannot change after use in inventory or a BOM", "papi2_immutable_history": "Installation history is immutable", "papi2_leaf_composite_price": "Composite price can only be set on parts without a bill of materials", "parts_composite_price_non_negative": "composite_price must be zero or greater", "parts_unit_price_non_negative": "unit_price must be zero or greater"}
 			message := messages[p.ConstraintName]
 			if message == "" {
 				message = "Change violates inventory or BOM rules"
@@ -55,6 +55,8 @@ func Translate(err error) error {
 			return &Error{Status: 409, Code: "constraint_violation", Message: message}
 		case "23502", "22P02":
 			return Invalid("Invalid field value")
+		case "22003":
+			return Invalid("numeric value out of range")
 		}
 	}
 	return err

@@ -7,6 +7,7 @@ import {
   Grid,
   GridCol,
   Group,
+  NumberInput,
   Stack,
   Textarea,
   TextInput,
@@ -23,17 +24,26 @@ import {
 import { Section } from "@/components/backoffice/Section";
 import { useUnsavedChanges } from "@/components/backoffice/useUnsavedChanges";
 
+function moneyInput(value: string | number): string {
+  if (value === "" || value === undefined || value === null) return "";
+  return String(value);
+}
+
 // Fields mirror the API's fixed metadata schema (schema/metadata.schema.json)
 export function AddPartForm() {
   const metadataForm = useMetadataForm();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [serialAware, setSerialAware] = useState(true);
+  const [composite, setComposite] = useState<string | number>("0.00");
+  const [unit, setUnit] = useState<string | number>("");
   // The success redirect is a router navigation, which this doesn't guard
   useUnsavedChanges(
     name.trim() !== "" ||
       description.trim() !== "" ||
       !serialAware ||
+      moneyInput(composite) !== "0.00" ||
+      moneyInput(unit) !== "" ||
       metadataForm.dirty,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -54,8 +64,11 @@ export function AddPartForm() {
         description: description.trim() || null,
         metadata: parsed.metadata,
         serial_aware: serialAware,
+        composite_price: moneyInput(composite) || "0.00",
+        unit_price: moneyInput(unit) === "" ? null : moneyInput(unit),
       });
-      // Only reached on failure; success redirects to the new part
+      // Success opens the new part. Staying here means the API rejected it.
+      if (!result.error && !result.fields) return;
       setFieldErrors(result.fields ?? {});
       setError(
         result.error ??
@@ -98,6 +111,29 @@ export function AddPartForm() {
                 onChange={(event) =>
                   setSerialAware(event.currentTarget.checked)
                 }
+              />
+              <NumberInput
+                label="Composite price"
+                description="Cost of this unit on its own"
+                value={composite}
+                onChange={setComposite}
+                decimalScale={2}
+                fixedDecimalScale
+                min={0}
+                step={0.01}
+                error={fieldErrors.composite_price}
+              />
+              <NumberInput
+                label="Unit price"
+                description="Defaults to the composite price when left blank"
+                placeholder={moneyInput(composite) || "0.00"}
+                value={unit}
+                onChange={setUnit}
+                decimalScale={2}
+                fixedDecimalScale
+                min={0}
+                step={0.01}
+                error={fieldErrors.unit_price}
               />
             </Stack>
 

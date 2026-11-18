@@ -15,7 +15,7 @@ import {
   VisuallyHidden,
 } from "@mantine/core";
 import { useIntersection } from "@mantine/hooks";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/libs/nav";
 import { useEffect, useState } from "react";
 
 import { loadCatalogPage } from "@/app/actions";
@@ -102,6 +102,9 @@ export function CatalogTable({
           <TableTr>
             <TableTh>Unit</TableTh>
             <TableTh ta="right" w={90} visibleFrom="sm">
+              Price
+            </TableTh>
+            <TableTh ta="right" w={90} visibleFrom="sm">
               Total
             </TableTh>
             <TableTh ta="right" w={90} visibleFrom="sm">
@@ -166,11 +169,18 @@ export function CatalogTable({
                         className="tabular"
                         hiddenFrom="sm"
                       >
-                        {entry.stock.in_use} in use · {entry.stock.available}{" "}
-                        free
+                        {entry.effectiveUnitPrice} · {entry.stock.in_use} in use
+                        · {entry.stock.available} free
                       </Text>
                     </Box>
                   </Group>
+                </TableTd>
+                <TableTd
+                  ta="right"
+                  className="tabular"
+                  visibleFrom="sm"
+                >
+                  {entry.effectiveUnitPrice}
                 </TableTd>
                 <TableTd ta="right" fw={600} visibleFrom="sm">
                   {entry.stock.total}

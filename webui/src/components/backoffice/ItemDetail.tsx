@@ -1,15 +1,20 @@
-import { Badge, Grid, GridCol, Group, Stack, Text } from "@mantine/core";
-import { notFound } from "next/navigation";
+import { Badge, Grid, GridCol, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
 
+import { PageError } from "@/app/error";
 import { saveItem } from "@/app/actions";
+import { NotFound } from "@/app/not-found";
 import {
   type Installation,
   imageUrls,
+  type ItemDetail as ItemRecord,
   itemHref,
+  type PartDetail,
   serialLabel,
   skuHref,
 } from "@/libs/inventory";
 import { getItem, getPart, isMissing } from "@/libs/katsukuraApi";
+import { useRefreshToken } from "@/libs/nav";
 
 import { DetailsEditor } from "./DetailsEditor";
 import { InstalledComponents } from "./InstalledComponents";
@@ -18,14 +23,62 @@ import { PartGallery } from "./PartGallery";
 import { Section } from "./Section";
 import { TextLink } from "./TextLink";
 
-export async function ItemDetail({ itemId }: { itemId: string }) {
-  const item = await getItem(itemId).catch((error) => {
-    if (isMissing(error)) notFound();
-    throw error;
-  });
-  const part = await getPart(item.part_id);
+export function ItemDetail({ itemId }: { itemId: string }) {
+  const token = useRefreshToken();
+  const seen = useRef(itemId);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "missing" }
+    | { status: "error"; message: string }
+    | { status: "ready"; item: ItemRecord; part: PartDetail }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    let cancel = false;
+    if (seen.current !== itemId) {
+      seen.current = itemId;
+      setState({ status: "loading" });
+    }
+    getItem(itemId)
+      .then(async (item) => {
+        if (cancel) return;
+        const part = await getPart(item.part_id);
+        if (!cancel) setState({ status: "ready", item, part });
+      })
+      .catch((error: unknown) => {
+        if (cancel) return;
+        if (isMissing(error)) setState({ status: "missing" });
+        else {
+          setState({
+            status: "error",
+            message:
+              error instanceof Error ? error.message : "Could not load this item",
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [itemId, token]);
+
+  if (state.status === "loading") {
+    return (
+      <Stack gap="md">
+        <Skeleton height={28} width={240} />
+        <Skeleton height={220} />
+      </Stack>
+    );
+  }
+  if (state.status === "missing") return <NotFound />;
+  if (state.status === "error") return <PageError message={state.message} />;
+  return <ItemBody item={state.item} part={state.part} />;
+}
+
+function ItemBody({ item, part }: { item: ItemRecord; part: PartDetail }) {
   const parentItem = item.parent?.parent_item;
   const images = imageUrls(item.metadata);
+  const compositePrice = part.composite_price ?? "0.00";
+  const effectiveUnitPrice = part.effective_unit_price ?? "0.00";
 
   return (
     <Stack gap="lg">
@@ -62,6 +115,20 @@ export async function ItemDetail({ itemId }: { itemId: string }) {
                 "Available, not installed"
               )}
             </Text>
+            <Group gap="lg" className="tabular">
+              <Text size="sm" c="dimmed">
+                Composite{" "}
+                <Text span fw={600} c="var(--mantine-color-text)">
+                  {compositePrice}
+                </Text>
+              </Text>
+              <Text size="sm" c="dimmed">
+                Unit price{" "}
+                <Text span fw={600} c="var(--mantine-color-text)">
+                  {effectiveUnitPrice}
+                </Text>
+              </Text>
+            </Group>
           </>
         }
       />

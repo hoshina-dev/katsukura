@@ -6,8 +6,143 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
+	"regexp"
+	"strings"
 	"time"
 )
+
+// Money is a non-negative amount with at most two decimal places, sent in JSON
+// as a decimal string such as "12.50". Stored leaf/override columns are
+// numeric(14,2); resolved BOM totals may be larger.
+type Money string
+
+// ZeroMoney is the default composite price for every new part.
+const ZeroMoney Money = "0.00"
+
+// MaxStoredMoney is the largest value numeric(14,2) can hold (12 digits before
+// the decimal point). Create/PATCH of stored prices must not exceed this;
+// resolved BOM totals may.
+const MaxStoredMoney Money = "999999999999.99"
+
+var moneyPattern = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
+
+// MoneyFrom parses a JSON string or number into Money (resolved totals allowed).
+func MoneyFrom(v any) (Money, error) {
+	switch x := v.(type) {
+	case Money:
+		return ParseMoney(string(x))
+	case string:
+		return ParseMoney(x)
+	case json.Number:
+		return ParseMoney(string(x))
+	default:
+		return "", fmt.Errorf("invalid money")
+	}
+}
+
+// StoredMoneyFrom parses a value that will be written to a numeric(14,2) column.
+func StoredMoneyFrom(v any) (Money, error) {
+	m, err := MoneyFrom(v)
+	if err != nil {
+		return "", err
+	}
+	return EnforceStoredMoney(m)
+}
+
+// ParseMoney accepts a non-negative decimal with at most two fraction digits
+// and normalizes it to two places ("12" -> "12.00").
+func ParseMoney(s string) (Money, error) {
+	s = strings.TrimSpace(s)
+	if !moneyPattern.MatchString(s) {
+		return "", fmt.Errorf("invalid money")
+	}
+	whole, frac, _ := strings.Cut(s, ".")
+	whole = strings.TrimLeft(whole, "0")
+	if whole == "" {
+		whole = "0"
+	}
+	if frac == "" {
+		frac = "00"
+	} else if len(frac) == 1 {
+		frac += "0"
+	}
+	return Money(whole + "." + frac), nil
+}
+
+// EnforceStoredMoney rejects amounts that cannot fit in numeric(14,2).
+func EnforceStoredMoney(m Money) (Money, error) {
+	whole, _, _ := strings.Cut(string(m), ".")
+	if len(whole) > 12 {
+		return "", fmt.Errorf("exceeds stored money limit")
+	}
+	return m, nil
+}
+
+func (m Money) String() string { return string(m) }
+
+func (m Money) Value() (driver.Value, error) {
+	if m == "" {
+		return string(ZeroMoney), nil
+	}
+	return string(m), nil
+}
+
+func (m *Money) Scan(v any) error {
+	if m == nil {
+		return fmt.Errorf("nil Money")
+	}
+	if v == nil {
+		*m = ZeroMoney
+		return nil
+	}
+	var s string
+	switch x := v.(type) {
+	case []byte:
+		s = string(x)
+	case string:
+		s = x
+	default:
+		return fmt.Errorf("invalid money value %T", v)
+	}
+	parsed, err := ParseMoney(s)
+	if err != nil {
+		return err
+	}
+	*m = parsed
+	return nil
+}
+
+func (m Money) MarshalJSON() ([]byte, error) {
+	if m == "" {
+		return json.Marshal(string(ZeroMoney))
+	}
+	return json.Marshal(string(m))
+}
+
+func (m *Money) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return fmt.Errorf("money cannot be null")
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		parsed, err := ParseMoney(s)
+		if err != nil {
+			return err
+		}
+		*m = parsed
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err == nil {
+		parsed, err := ParseMoney(string(n))
+		if err != nil {
+			return err
+		}
+		*m = parsed
+		return nil
+	}
+	return fmt.Errorf("invalid money")
+}
 
 type JSONMap map[string]any
 
@@ -47,10 +182,17 @@ type Part struct {
 	Metadata    JSONMap   `json:"metadata" gorm:"type:jsonb"`
 	// Whether items of this SKU get serial numbers. Pointer so an omitted
 	// create field does not become false under GORM's zero-value write.
-	SerialAware *bool      `json:"serial_aware"`
-	ArchivedAt  *time.Time `json:"archived_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	SerialAware *bool `json:"serial_aware"`
+	// Stored leaf price (0 for assemblies); overwritten with the resolved
+	// part_composite_price() value on read responses.
+	CompositePrice Money `json:"composite_price" gorm:"type:numeric(14,2);not null;default:0"`
+	// Optional override; null means the effective price is the composite price.
+	UnitPrice *Money `json:"unit_price" gorm:"type:numeric(14,2)"`
+	// unit_price when set, otherwise the resolved composite price.
+	EffectiveUnitPrice Money      `json:"effective_unit_price" gorm:"-"`
+	ArchivedAt         *time.Time `json:"archived_at"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 	// Counts of the part's items; filled on part lists and details
 	Stock *Stock `json:"stock,omitempty" gorm:"-"`
 	// Number of BOM rows; filled on part lists and details

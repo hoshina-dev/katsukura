@@ -19,7 +19,7 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/libs/nav";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { addItems, deleteItems } from "@/app/actions";

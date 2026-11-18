@@ -1,5 +1,5 @@
 import { Text, type TextProps } from "@mantine/core";
-import Link from "next/link";
+import { Link } from "@/libs/nav";
 import type { ReactNode } from "react";
 
 const linkStyle = {

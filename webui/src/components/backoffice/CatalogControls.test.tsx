@@ -7,7 +7,8 @@ import { CatalogToolbar } from "./CatalogControls";
 const replace = vi.fn();
 const push = vi.fn();
 let search = "q=desk&page=2";
-vi.mock("next/navigation", () => ({
+vi.mock("@/libs/nav", async (original) => ({
+  ...(await original<typeof import("@/libs/nav")>()),
   usePathname: () => "/",
   useRouter: () => ({ replace, push }),
   useSearchParams: () => new URLSearchParams(search),

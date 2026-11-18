@@ -59,10 +59,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: katsukura # Go API, internal only
+          - name: katsukura # API and backoffice, one image
             context: .
-          - name: katsukura-webui # Next.js backoffice, exposed via traefik
-            context: webui
     steps:
       - uses: actions/checkout@v6
         with:

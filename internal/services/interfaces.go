@@ -28,6 +28,9 @@ type Store interface {
 	Parts(context.Context, models.Filter) (models.Page[models.Part], error)
 	Stock(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]models.Stock, error)
 	ComponentCounts(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]int64, error)
+	// ResolvePrices sets each part's composite_price to part_composite_price()
+	// and fills effective_unit_price.
+	ResolvePrices(ctx context.Context, parts []models.Part) error
 	Items(context.Context, models.Filter) (models.Page[models.InventoryItem], error)
 	Tree(context.Context, uuid.UUID, int) (*models.TreeNode, error)
 	Summary(context.Context) (models.Summary, error)

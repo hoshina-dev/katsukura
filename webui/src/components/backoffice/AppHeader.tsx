@@ -1,5 +1,5 @@
 import { Box, Group, Text } from "@mantine/core";
-import Link from "next/link";
+import { Link } from "@/libs/nav";
 
 export function AppHeader() {
   return (

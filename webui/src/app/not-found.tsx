@@ -1,9 +1,8 @@
-"use client";
-
 import { Button, Stack, Text, Title } from "@mantine/core";
-import Link from "next/link";
 
-export default function NotFound() {
+import { Link } from "@/libs/nav";
+
+export function NotFound() {
   return (
     <Stack gap="sm" align="flex-start" py={64} maw={480}>
       <Title order={1}>Not found</Title>
