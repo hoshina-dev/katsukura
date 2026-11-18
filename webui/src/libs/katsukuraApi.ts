@@ -101,12 +101,11 @@ export function createPart(part: NewPart) {
 
 export function updatePart(
   id: string,
-  patch: Partial<
-    Pick<
-      Part,
-      "name" | "description" | "metadata" | "composite_price" | "unit_price"
-    >
-  >,
+  patch: Partial<Pick<Part, "name" | "description" | "metadata">> & {
+    // null clears / resets: composite_price -> 0.00, unit_price -> no override
+    composite_price?: string | null;
+    unit_price?: string | null;
+  },
 ) {
   return send<Part>("PATCH", `/parts/${id}`, patch);
 }
