@@ -15,7 +15,7 @@ import {
   IconPlus,
   IconSearch,
 } from "@tabler/icons-react";
-import Link from "next/link";
+import { Link } from "@/libs/nav";
 import { useEffect, useRef, useState } from "react";
 
 import { useSearchParamUpdate } from "./Pager";

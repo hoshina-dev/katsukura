@@ -16,7 +16,7 @@ webui-build: webui-install
 	cd webui && pnpm build
 
 webui-start: webui-build
-	cd webui && pnpm start
+	STATIC_DIR=webui/dist go run ./cmd/server
 
 webui-check: webui-install
 	cd webui && pnpm check
@@ -41,4 +41,3 @@ lint:
 
 docker-build:
 	docker build -t katsukura:local .
-	docker build -t katsukura-webui:local webui

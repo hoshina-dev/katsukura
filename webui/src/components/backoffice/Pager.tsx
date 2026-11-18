@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Group, NumberInput, Text } from "@mantine/core";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "@/libs/nav";
 import { useCallback, useEffect, useState } from "react";
 
 import { isPositiveInt } from "@/libs/inventory";

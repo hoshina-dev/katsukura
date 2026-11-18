@@ -1,8 +1,3 @@
-"use server";
-
-import { updateTag } from "next/cache";
-import { redirect } from "next/navigation";
-
 import {
   type CatalogQuery,
   IMAGE_TYPES,
@@ -22,18 +17,15 @@ import {
   getPart,
   listItems,
   type NewComponent,
-  ITEMS_TAG,
   type NewPart,
   ApiError,
-  PARTS_TAG,
-  partTag,
   replaceComponent,
   searchParts,
   updateComponent,
   updateItem,
   updatePart,
 } from "@/libs/katsukuraApi";
-import { uploadImage } from "@/libs/s3Client";
+import { navigate } from "@/libs/nav";
 
 export type SubmitResult = {
   error?: string;
@@ -90,7 +82,7 @@ export async function loadCatalogPage(query: CatalogQuery, offset: number) {
   return getCatalog(query, LIST_PAGE_SIZE, offset);
 }
 
-// One file per call, so each stays under the server action body limit
+// One cropped file per call. The API stores it and returns the public URL.
 export async function uploadPartImage(
   form: FormData,
 ): Promise<{ url?: string; error?: string }> {
@@ -103,14 +95,22 @@ export async function uploadPartImage(
     return { error: `${file.name} is larger than 1 MB` };
   }
   try {
-    return { url: await uploadImage(file, "part-image") };
+    const response = await fetch("/api/v1/uploads", { method: "POST", body: form });
+    const body = await response.json().catch(() => undefined);
+    if (!response.ok) {
+      return {
+        error:
+          body?.error?.message || `${file.name} could not be uploaded to storage`,
+      };
+    }
+    return { url: body.url };
   } catch (error) {
     console.error("part image upload failed", error);
     return { error: `${file.name} could not be uploaded to storage` };
   }
 }
 
-// Returns errors, or redirects to the new part's edit page on success
+// Returns errors, or opens the new part's page on success
 export async function addPart(part: NewPart): Promise<SubmitResult> {
   let sku: string;
   try {
@@ -118,20 +118,17 @@ export async function addPart(part: NewPart): Promise<SubmitResult> {
   } catch (error) {
     return toResult(error);
   }
-  redirect(skuHref(sku));
+  navigate(skuHref(sku));
+  return {};
 }
 
-// Runs one API change, then expires the given cache tags
-async function mutate(
-  change: () => Promise<unknown>,
-  ...tags: string[]
-): Promise<SubmitResult> {
+// Runs one API change. Callers refresh the page that shows the result.
+async function mutate(change: () => Promise<unknown>): Promise<SubmitResult> {
   try {
     await change();
   } catch (error) {
     return toResult(error);
   }
-  for (const tag of tags) updateTag(tag);
   return {};
 }
 
@@ -155,12 +152,7 @@ export async function partDeleteBlocker(partId: string) {
 }
 
 export async function deletePart(partId: string) {
-  return mutate(
-    () => archivePart(partId),
-    partTag(partId),
-    ITEMS_TAG,
-    PARTS_TAG,
-  );
+  return mutate(() => archivePart(partId));
 }
 
 export type PartPrices = {
@@ -175,46 +167,33 @@ export async function savePart(
   name?: string,
   prices?: PartPrices,
 ) {
-  return mutate(
-    () =>
-      updatePart(partId, {
-        description,
-        metadata,
-        name,
-        ...prices,
-      }),
-    partTag(partId),
-    PARTS_TAG,
+  return mutate(() =>
+    updatePart(partId, {
+      description,
+      metadata,
+      name,
+      ...prices,
+    }),
   );
 }
 
 export async function addItems(partId: string, serialNumbers: string[]) {
-  return mutate(() => createItems(partId, serialNumbers), ITEMS_TAG);
+  return mutate(() => createItems(partId, serialNumbers));
 }
 
 export async function deleteItems(itemIds: string[]) {
-  const result = await inBatches(itemIds, archiveItem, "deleted");
-  updateTag(ITEMS_TAG);
-  return result;
+  return inBatches(itemIds, archiveItem, "deleted");
 }
 
 export async function removeBom(partId: string, componentIds: string[]) {
-  const result = await inBatches(
-    componentIds,
-    (id) => deleteComponent(partId, id),
-    "removed",
-  );
-  updateTag(partTag(partId));
-  updateTag(ITEMS_TAG);
-  updateTag(PARTS_TAG);
-  return result;
+  return inBatches(componentIds, (id) => deleteComponent(partId, id), "removed");
 }
 
 export async function saveItem(
   itemId: string,
   metadata: Record<string, unknown>,
 ) {
-  return mutate(() => updateItem(itemId, { metadata }), ITEMS_TAG);
+  return mutate(() => updateItem(itemId, { metadata }));
 }
 
 // Items of a SKU that are not installed anywhere, for the replace picker
@@ -233,10 +212,7 @@ export async function replaceItem(
   installationId: string,
   itemId: string,
 ) {
-  return mutate(
-    () => replaceComponent(parentItemId, installationId, itemId),
-    ITEMS_TAG,
-  );
+  return mutate(() => replaceComponent(parentItemId, installationId, itemId));
 }
 
 // Candidates for a BOM row of partId, which can't contain itself
@@ -248,14 +224,9 @@ export async function findParts(search: string, partId: string) {
   return { parts, more: list.total > list.data.length };
 }
 
-// BOM changes can demote existing items, so stock counts are expired too
+// BOM changes can demote existing items, so stock counts are refreshed too
 export async function addBomChild(partId: string, component: NewComponent) {
-  return mutate(
-    () => createComponent(partId, component),
-    partTag(partId),
-    ITEMS_TAG,
-    PARTS_TAG,
-  );
+  return mutate(() => createComponent(partId, component));
 }
 
 export async function updateBomChild(
@@ -263,19 +234,9 @@ export async function updateBomChild(
   componentId: string,
   patch: { required_quantity: number },
 ) {
-  return mutate(
-    () => updateComponent(partId, componentId, patch),
-    partTag(partId),
-    ITEMS_TAG,
-    PARTS_TAG,
-  );
+  return mutate(() => updateComponent(partId, componentId, patch));
 }
 
 export async function deleteBomChild(partId: string, componentId: string) {
-  return mutate(
-    () => deleteComponent(partId, componentId),
-    partTag(partId),
-    ITEMS_TAG,
-    PARTS_TAG,
-  );
+  return mutate(() => deleteComponent(partId, componentId));
 }

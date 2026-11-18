@@ -175,18 +175,18 @@ func (m *JSONMap) Scan(v any) error {
 }
 
 type Part struct {
-	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
-	SKU         string     `json:"sku"`
-	Name        string     `json:"name"`
-	Description *string    `json:"description"`
-	Metadata    JSONMap    `json:"metadata" gorm:"type:jsonb"`
+	ID          uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
+	SKU         string    `json:"sku"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	Metadata    JSONMap   `json:"metadata" gorm:"type:jsonb"`
 	// Stored leaf price (0 for assemblies); overwritten with the resolved
 	// part_composite_price() value on read responses.
 	CompositePrice Money `json:"composite_price" gorm:"type:numeric(14,2);not null;default:0"`
 	// Optional override; null means the effective price is the composite price.
 	UnitPrice *Money `json:"unit_price" gorm:"type:numeric(14,2)"`
 	// unit_price when set, otherwise the resolved composite price.
-	EffectiveUnitPrice Money     `json:"effective_unit_price" gorm:"-"`
+	EffectiveUnitPrice Money      `json:"effective_unit_price" gorm:"-"`
 	ArchivedAt         *time.Time `json:"archived_at"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`

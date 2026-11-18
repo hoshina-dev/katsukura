@@ -5,7 +5,8 @@ import { render } from "@/tests/utils";
 import { Pager } from "./Pager";
 
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({
+vi.mock("@/libs/nav", async (original) => ({
+  ...(await original<typeof import("@/libs/nav")>()),
   usePathname: () => "/units/A",
   useRouter: () => ({ replace, push: vi.fn() }),
   useSearchParams: () => new URLSearchParams("q=sma&page=2"),

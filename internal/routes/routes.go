@@ -2,14 +2,30 @@ package routes
 
 import (
 	"context"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/hoshina-dev/katsukura/internal/handlers"
-	"time"
 )
 
+type Options struct {
+	// StaticDir serves the built backoffice. Empty keeps the API-only 404s.
+	StaticDir string
+	Images    handlers.ImageStore
+}
+
 func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
-	app := fiber.New(fiber.Config{ErrorHandler: handlers.ErrorHandler, BodyLimit: 1024 * 1024})
+	return New(api, ready, Options{})
+}
+
+func New(api handlers.API, ready func(context.Context) error, opts Options) *fiber.App {
+	// One cropped part image is at most 1 MB; allow multipart overhead.
+	app := fiber.New(fiber.Config{ErrorHandler: handlers.ErrorHandler, BodyLimit: 2 * 1024 * 1024})
 	app.Use(recover.New())
 	h := handlers.New(api)
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"status": "ok"}) })
@@ -25,6 +41,7 @@ func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
 	v.Get("/summary", h.Summary)
 	v.Get("/metadata/schema", h.MetadataSchema)
 	v.Post("/metadata/validate", h.ValidateMetadata)
+	v.Post("/uploads", handlers.UploadImage(opts.Images))
 	p := v.Group("/parts")
 	p.Get("/", h.ListParts)
 	p.Post("/", h.CreatePart)
@@ -44,6 +61,51 @@ func NewApp(api handlers.API, ready func(context.Context) error) *fiber.App {
 	i.Delete("/:id", h.ArchiveItem)
 	i.Get("/:id/tree", h.Tree)
 	i.Post("/:id/components/:installationID/replace", h.Replace)
-	app.Use(func(c *fiber.Ctx) error { return fiber.ErrNotFound })
+	if opts.StaticDir != "" {
+		mountStatic(app, opts.StaticDir)
+	} else {
+		app.Use(func(c *fiber.Ctx) error { return fiber.ErrNotFound })
+	}
 	return app
+}
+
+// mountStatic serves built UI files and falls back to index.html for app routes.
+func mountStatic(app *fiber.App, dir string) {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		app.Use(func(c *fiber.Ctx) error { return fiber.ErrNotFound })
+		return
+	}
+	app.Use(func(c *fiber.Ctx) error {
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			return fiber.ErrNotFound
+		}
+		p := c.Path()
+		if p == "/healthz" || p == "/readyz" || p == "/api" || strings.HasPrefix(p, "/api/") {
+			return fiber.ErrNotFound
+		}
+		rel := strings.TrimPrefix(path.Clean("/"+p), "/")
+		if rel == "." {
+			rel = ""
+		}
+		if rel != "" {
+			full := filepath.Join(root, filepath.FromSlash(rel))
+			fromRoot, relErr := filepath.Rel(root, full)
+			if relErr != nil || strings.HasPrefix(fromRoot, "..") {
+				return fiber.ErrNotFound
+			}
+			info, statErr := os.Stat(full)
+			if statErr == nil && !info.IsDir() {
+				if strings.HasPrefix(p, "/assets/") {
+					c.Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				return c.SendFile(full)
+			}
+			if strings.Contains(filepath.Base(rel), ".") {
+				return fiber.ErrNotFound
+			}
+		}
+		c.Set("Cache-Control", "no-cache")
+		return c.SendFile(filepath.Join(root, "index.html"))
+	})
 }

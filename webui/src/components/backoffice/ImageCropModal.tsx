@@ -169,7 +169,6 @@ export function ImageCropModal({
             aspect={aspect}
             keepSelection
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               ref={image}
               src={src}
