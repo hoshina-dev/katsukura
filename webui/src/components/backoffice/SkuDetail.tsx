@@ -94,6 +94,7 @@ export async function SkuDetail({
               page={page}
               search={search}
               slots={part.components}
+              serialAware={part.serial_aware}
             />
             <BomSection
               partId={part.id}

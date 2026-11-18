@@ -40,11 +40,14 @@ func (m *JSONMap) Scan(v any) error {
 }
 
 type Part struct {
-	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
-	SKU         string     `json:"sku"`
-	Name        string     `json:"name"`
-	Description *string    `json:"description"`
-	Metadata    JSONMap    `json:"metadata" gorm:"type:jsonb"`
+	ID          uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
+	SKU         string    `json:"sku"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	Metadata    JSONMap   `json:"metadata" gorm:"type:jsonb"`
+	// Whether items of this SKU get serial numbers. Pointer so an omitted
+	// create field does not become false under GORM's zero-value write.
+	SerialAware *bool      `json:"serial_aware"`
 	ArchivedAt  *time.Time `json:"archived_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`

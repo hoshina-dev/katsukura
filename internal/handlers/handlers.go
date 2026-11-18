@@ -210,7 +210,7 @@ func (h *Handler) ValidateMetadata(c *fiber.Ctx) error {
 }
 func (h *Handler) CreatePart(c *fiber.Ctx) error {
 	v := new(models.Part)
-	if e := body(c, v, "sku", "name", "description", "metadata"); e != nil {
+	if e := body(c, v, "sku", "name", "description", "metadata", "serial_aware"); e != nil {
 		return e
 	}
 	return reply(c, 201, v, h.api.CreatePart(c.UserContext(), v))

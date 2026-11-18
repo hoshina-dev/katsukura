@@ -3,6 +3,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Grid,
   GridCol,
   Group,
@@ -27,9 +28,13 @@ export function AddPartForm() {
   const metadataForm = useMetadataForm();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [serialAware, setSerialAware] = useState(true);
   // The success redirect is a router navigation, which this doesn't guard
   useUnsavedChanges(
-    name.trim() !== "" || description.trim() !== "" || metadataForm.dirty,
+    name.trim() !== "" ||
+      description.trim() !== "" ||
+      !serialAware ||
+      metadataForm.dirty,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +53,7 @@ export function AddPartForm() {
         name: name.trim(),
         description: description.trim() || null,
         metadata: parsed.metadata,
+        serial_aware: serialAware,
       });
       // Only reached on failure; success redirects to the new part
       setFieldErrors(result.fields ?? {});
@@ -84,6 +90,14 @@ export function AddPartForm() {
                 onChange={(event) => setDescription(event.currentTarget.value)}
                 autosize
                 minRows={2}
+              />
+              <Checkbox
+                label="Track serial numbers"
+                description="Turn off for products like nuts and bolts that do not need individual serial numbers."
+                checked={serialAware}
+                onChange={(event) =>
+                  setSerialAware(event.currentTarget.checked)
+                }
               />
             </Stack>
 

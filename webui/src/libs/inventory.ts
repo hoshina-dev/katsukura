@@ -13,6 +13,7 @@ export type Part = {
   description: string | null;
   metadata: Metadata;
   archived_at: string | null;
+  serial_aware: boolean;
   // Filled on part lists and details
   stock?: Stock;
   component_count?: number;

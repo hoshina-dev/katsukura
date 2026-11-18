@@ -89,6 +89,7 @@ function qs(params: Record<string, string | number | undefined>) {
 // The API generates the SKU when it is omitted
 export type NewPart = Pick<Part, "name" | "description" | "metadata"> & {
   sku?: string;
+  serial_aware?: boolean;
 };
 
 export function createPart(part: NewPart) {
@@ -111,11 +112,17 @@ export function deleteComponent(partId: string, componentId: string) {
   return send<unknown>("DELETE", `/parts/${partId}/components/${componentId}`);
 }
 
-// One item per serial number; the API copies the part's metadata
-export function createItems(partId: string, serialNumbers: string[]) {
+// One item per serial number when the part is serial-aware; the API copies metadata
+export function createItems(
+  partId: string,
+  count: number,
+  serialNumbers?: string[],
+) {
   return send<{ data: Item[] }>("POST", `/parts/${partId}/items`, {
-    count: serialNumbers.length,
-    serial_numbers: serialNumbers,
+    count,
+    ...(serialNumbers !== undefined && serialNumbers.length > 0
+      ? { serial_numbers: serialNumbers }
+      : {}),
   });
 }
 

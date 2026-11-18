@@ -32,10 +32,14 @@ The UI reads `KATSUKURA_API_URL` (default `http://localhost:8082`) on the server
 
 - `parts`: one schema per unique SKU, with JSONB object metadata. When `sku` is
   omitted on create, the API generates `RF-` plus 8 random hex digits.
+  `serial_aware` (default true) is set only on create: false means items of
+  that SKU are stocked without serial numbers (nuts, bolts, and similar).
 - `part_components`: parent SKU, child SKU, named slot, and exact quantity.
 - `inventory_items`: one physical unit, nullable serial number, and JSONB object
   metadata. Non-null serial numbers are unique within a SKU and
-  are set only on create; PATCH rejects `serial_number`.
+  are set only on create; PATCH rejects `serial_number`. For a part with
+  `serial_aware` false, create leaves `serial_number` null and rejects a
+  supplied serial.
 - `item_components`: installed child items and removal history. A child has only
   one active parent, and its SKU must match the selected BOM slot.
 
@@ -128,10 +132,10 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 
 | Resource | Operations |
 |---|---|
-| `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts) |
+| `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts); create accepts `serial_aware` (bool, default true) |
 | `/parts/:id` | Read with BOM and `stock`, edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
-| `/parts/:id/items` | POST `{count, serial_numbers?}` (1–1000) to build items in one transaction, each with a copy of the part's metadata and its BOM filled from stock; `serial_numbers` has one entry per item, and a blank or missing entry gets a generated `RF-SN-` serial number |
+| `/parts/:id/items` | POST `{count, serial_numbers?}` (1–1000) to build items in one transaction, each with a copy of the part's metadata and its BOM filled from stock; for serial-aware parts, `serial_numbers` has one entry per item and a blank or missing entry gets a generated `RF-SN-` serial number; for parts with `serial_aware` false, serials stay null and a non-blank `serial_numbers` entry is rejected |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
 | `/inventory` | List/search/filter/paginate and create physical items; an installed item has `parent`, its active installation with `parent_item` |
 | `/inventory/:id` | Read ownership/history, edit, archive, restore |
