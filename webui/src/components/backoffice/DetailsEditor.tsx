@@ -13,7 +13,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { PartPrices, SubmitResult } from "@/app/actions";
 import type { Metadata, Money } from "@/libs/inventory";
@@ -77,6 +77,25 @@ export function DetailsEditor({
     initialPrices?.compositePrice ?? "0.00",
   );
   const [savedUnit, setSavedUnit] = useState(initialPrices?.unitPrice ?? "");
+  // Remount does not happen when the last BOM row is removed; reset composite
+  // draft/baseline when leaf vs assembly mode flips so a stale calculated total
+  // is not written as the new leaf price.
+  const editableComposite = initialPrices?.editableComposite;
+  const prevEditableComposite = useRef(editableComposite);
+  useEffect(() => {
+    if (initialPrices === undefined) {
+      prevEditableComposite.current = undefined;
+      return;
+    }
+    if (prevEditableComposite.current !== initialPrices.editableComposite) {
+      setComposite(initialPrices.compositePrice);
+      setSavedComposite(initialPrices.compositePrice);
+      prevEditableComposite.current = initialPrices.editableComposite;
+    } else if (!initialPrices.editableComposite) {
+      setComposite(initialPrices.compositePrice);
+      setSavedComposite(initialPrices.compositePrice);
+    }
+  }, [initialPrices]);
   const compositeChanged =
     initialPrices !== undefined &&
     initialPrices.editableComposite &&
@@ -151,7 +170,11 @@ export function DetailsEditor({
               form.commit();
               setSavedValue(value.trim());
               setSavedName(name.trim());
-              setSavedComposite(moneyInput(composite) || "0.00");
+              // Clearing composite sends null and stores 0; keep draft and
+              // baseline aligned so the form is not left dirty after save.
+              const nextComposite = moneyInput(composite) || "0.00";
+              setComposite(nextComposite);
+              setSavedComposite(nextComposite);
               setSavedUnit(moneyInput(unit));
               setJustSaved(true);
               router.refresh();

@@ -55,6 +55,8 @@ func Translate(err error) error {
 			return &Error{Status: 409, Code: "constraint_violation", Message: message}
 		case "23502", "22P02":
 			return Invalid("Invalid field value")
+		case "22003":
+			return Invalid("numeric value out of range")
 		}
 	}
 	return err

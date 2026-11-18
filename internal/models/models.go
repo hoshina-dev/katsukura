@@ -11,16 +11,22 @@ import (
 	"time"
 )
 
-// Money is a non-negative amount with at most two decimal places, stored as
-// numeric(14,2) and sent in JSON as a decimal string such as "12.50".
+// Money is a non-negative amount with at most two decimal places, sent in JSON
+// as a decimal string such as "12.50". Stored leaf/override columns are
+// numeric(14,2); resolved BOM totals may be larger.
 type Money string
 
 // ZeroMoney is the default composite price for every new part.
 const ZeroMoney Money = "0.00"
 
+// MaxStoredMoney is the largest value numeric(14,2) can hold (12 digits before
+// the decimal point). Create/PATCH of stored prices must not exceed this;
+// resolved BOM totals may.
+const MaxStoredMoney Money = "999999999999.99"
+
 var moneyPattern = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
 
-// MoneyFrom parses a JSON string or number into Money.
+// MoneyFrom parses a JSON string or number into Money (resolved totals allowed).
 func MoneyFrom(v any) (Money, error) {
 	switch x := v.(type) {
 	case Money:
@@ -32,6 +38,15 @@ func MoneyFrom(v any) (Money, error) {
 	default:
 		return "", fmt.Errorf("invalid money")
 	}
+}
+
+// StoredMoneyFrom parses a value that will be written to a numeric(14,2) column.
+func StoredMoneyFrom(v any) (Money, error) {
+	m, err := MoneyFrom(v)
+	if err != nil {
+		return "", err
+	}
+	return EnforceStoredMoney(m)
 }
 
 // ParseMoney accepts a non-negative decimal with at most two fraction digits
@@ -52,6 +67,15 @@ func ParseMoney(s string) (Money, error) {
 		frac += "0"
 	}
 	return Money(whole + "." + frac), nil
+}
+
+// EnforceStoredMoney rejects amounts that cannot fit in numeric(14,2).
+func EnforceStoredMoney(m Money) (Money, error) {
+	whole, _, _ := strings.Cut(string(m), ".")
+	if len(whole) > 12 {
+		return "", fmt.Errorf("exceeds stored money limit")
+	}
+	return m, nil
 }
 
 func (m Money) String() string { return string(m) }

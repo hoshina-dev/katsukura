@@ -281,6 +281,9 @@ func (r *Repository) Tree(ctx context.Context, id uuid.UUID, depth int) (*models
 	if err = r.db.WithContext(ctx).Where("id IN ?", partIDs).Find(&parts).Error; err != nil {
 		return nil, err
 	}
+	if err = r.ResolvePrices(ctx, parts); err != nil {
+		return nil, err
+	}
 	byPart := map[uuid.UUID]*models.Part{}
 	for j := range parts {
 		byPart[parts[j].ID] = &parts[j]

@@ -61,6 +61,18 @@ func TestPricePatch(t *testing.T) {
 	if e := validatePatch(clear, "unit_price"); e != nil || clear["unit_price"] != nil {
 		t.Fatalf("clear unit_price: %v %v", clear, e)
 	}
+	for _, over := range []map[string]any{
+		{"composite_price": "1000000000000.00"},
+		{"unit_price": "1000000000000"},
+	} {
+		if e := validatePatch(over, "composite_price unit_price"); e == nil {
+			t.Fatalf("accepted oversize stored price %v", over)
+		}
+	}
+	max := map[string]any{"composite_price": string(models.MaxStoredMoney)}
+	if e := validatePatch(max, "composite_price"); e != nil {
+		t.Fatal(e)
+	}
 }
 func TestDecodeObject(t *testing.T) {
 	for _, body := range []string{"null", "[]", "42", "bad"} {

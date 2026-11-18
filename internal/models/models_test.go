@@ -15,6 +15,8 @@ func TestParseMoney(t *testing.T) {
 		{"12.5", "12.50"},
 		{"12.50", "12.50"},
 		{"0012.5", "12.50"},
+		{"999999999999.99", "999999999999.99"},
+		{"1000000000000.00", "1000000000000.00"},
 	} {
 		got, err := ParseMoney(tc.in)
 		if err != nil || string(got) != tc.want {
@@ -25,6 +27,22 @@ func TestParseMoney(t *testing.T) {
 		if _, err := ParseMoney(bad); err == nil {
 			t.Fatalf("accepted %q", bad)
 		}
+	}
+}
+
+func TestStoredMoneyLimit(t *testing.T) {
+	ok, err := EnforceStoredMoney(MaxStoredMoney)
+	if err != nil || ok != MaxStoredMoney {
+		t.Fatalf("max stored: %q %v", ok, err)
+	}
+	if _, err := EnforceStoredMoney("1000000000000.00"); err == nil {
+		t.Fatal("accepted oversize stored money")
+	}
+	if _, err := StoredMoneyFrom("1000000000000.00"); err == nil {
+		t.Fatal("StoredMoneyFrom accepted oversize")
+	}
+	if got, err := StoredMoneyFrom("12.5"); err != nil || got != "12.50" {
+		t.Fatalf("StoredMoneyFrom: %q %v", got, err)
 	}
 }
 

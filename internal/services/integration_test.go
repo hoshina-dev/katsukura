@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/katsukura/internal/apperrors"
 	"github.com/hoshina-dev/katsukura/internal/database"
@@ -710,6 +711,67 @@ func TestPartPrices(t *testing.T) {
 	must(e)
 	if detail.CompositePrice != "63.00" {
 		t.Fatalf("nested rollup: %s", detail.CompositePrice)
+	}
+
+	if e = patch(s.UpdatePart)(ctx, leaf.ID, map[string]any{"composite_price": "1000000000000.00"}); e == nil {
+		t.Fatal("accepted oversize stored composite")
+	}
+	must(patch(s.UpdatePart)(ctx, leaf.ID, map[string]any{"composite_price": string(models.MaxStoredMoney)}))
+	detail, e = s.Part(ctx, parent.ID)
+	must(e)
+	wantRollup := models.Money("1999999999999.98") // 2 * MaxStoredMoney + free(0)
+	if detail.CompositePrice != wantRollup {
+		t.Fatalf("unconstrained rollup: got %s want %s", detail.CompositePrice, wantRollup)
+	}
+
+	must(patch(s.UpdatePart)(ctx, leaf.ID, map[string]any{"unit_price": "7.00"}))
+	components, e := s.Components(ctx, parent.ID)
+	must(e)
+	var leafChild *models.Part
+	for i := range components {
+		if components[i].ChildPart != nil && components[i].ChildPart.ID == leaf.ID {
+			leafChild = components[i].ChildPart
+			break
+		}
+	}
+	if leafChild == nil || leafChild.EffectiveUnitPrice != "7.00" || leafChild.CompositePrice != models.MaxStoredMoney {
+		t.Fatalf("components embed unresolved: %+v", leafChild)
+	}
+	parentDetail, e := s.Part(ctx, leaf.ID)
+	must(e)
+	if len(parentDetail.Parents) == 0 || parentDetail.Parents[0].ParentPart == nil {
+		t.Fatal("expected parent embed")
+	}
+	if parentDetail.Parents[0].ParentPart.CompositePrice != wantRollup {
+		t.Fatalf("parent embed unresolved: %s", parentDetail.Parents[0].ParentPart.CompositePrice)
+	}
+
+	must(s.CreateItem(ctx, &models.InventoryItem{PartID: leaf.ID}))
+	items, e := s.Items(ctx, models.Filter{PartID: &leaf.ID, Limit: 10})
+	must(e)
+	if items.Total != 1 || items.Data[0].Part == nil || items.Data[0].Part.EffectiveUnitPrice != "7.00" {
+		t.Fatalf("items embed unresolved: %+v", items.Data)
+	}
+
+	// Diamond BOM: shared mid node would explode without per-part memoization.
+	chain := make([]*models.Part, 12)
+	for i := range chain {
+		chain[i] = &models.Part{SKU: fmt.Sprintf("D%d", i), Name: fmt.Sprintf("Deep %d", i)}
+		must(s.CreatePart(ctx, chain[i]))
+	}
+	must(patch(s.UpdatePart)(ctx, chain[0].ID, map[string]any{"composite_price": "1.00"}))
+	for i := 1; i < len(chain); i++ {
+		must(s.CreateComponent(ctx, chain[i].ID, &models.PartComponent{
+			ChildPartID: chain[i-1].ID, Slot: "a", RequiredQuantity: 2,
+		}))
+		must(s.CreateComponent(ctx, chain[i].ID, &models.PartComponent{
+			ChildPartID: chain[i-1].ID, Slot: "b", RequiredQuantity: 2,
+		}))
+	}
+	deep, e := s.Part(ctx, chain[len(chain)-1].ID)
+	must(e)
+	if deep.CompositePrice != "4194304.00" { // 4^11 from dual slots of qty 2
+		t.Fatalf("deep shared BOM: %s", deep.CompositePrice)
 	}
 }
 
