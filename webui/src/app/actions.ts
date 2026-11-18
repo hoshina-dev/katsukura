@@ -155,13 +155,26 @@ export async function deletePart(partId: string) {
   return mutate(() => archivePart(partId));
 }
 
+export type PartPrices = {
+  composite_price?: string | null;
+  unit_price?: string | null;
+};
+
 export async function savePart(
   partId: string,
   metadata: Record<string, unknown>,
   description: string | null,
   name?: string,
+  prices?: PartPrices,
 ) {
-  return mutate(() => updatePart(partId, { description, metadata, name }));
+  return mutate(() =>
+    updatePart(partId, {
+      description,
+      metadata,
+      name,
+      ...prices,
+    }),
+  );
 }
 
 export async function addItems(partId: string, serialNumbers: string[]) {
@@ -221,9 +234,7 @@ export async function updateBomChild(
   componentId: string,
   patch: { required_quantity: number },
 ) {
-  return mutate(() =>
-    updateComponent(partId, componentId, patch),
-  );
+  return mutate(() => updateComponent(partId, componentId, patch));
 }
 
 export async function deleteBomChild(partId: string, componentId: string) {

@@ -29,6 +29,7 @@ const entry = (n: number): CatalogEntry => ({
   imageUrl: null,
   stock: { total: 0, in_use: 0, available: 0 },
   componentCount: n === 1 ? 2 : 0,
+  effectiveUnitPrice: "0.00",
 });
 
 const query = { search: "", sort: "default" as const, page: 1 };

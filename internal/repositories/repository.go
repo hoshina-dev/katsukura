@@ -187,6 +187,42 @@ func (r *Repository) ComponentCounts(ctx context.Context, partIDs []uuid.UUID) (
 	}
 	return counts, e
 }
+
+// ResolvePrices replaces each part's composite_price with part_composite_price()
+// and sets effective_unit_price to the unit override or that composite.
+func (r *Repository) ResolvePrices(ctx context.Context, parts []models.Part) error {
+	if len(parts) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(parts))
+	for i, p := range parts {
+		ids[i] = p.ID
+	}
+	var rows []struct {
+		ID             uuid.UUID
+		CompositePrice models.Money
+	}
+	e := r.db.WithContext(ctx).Raw(
+		`SELECT id, part_composite_price(id) AS composite_price FROM parts WHERE id IN ?`, ids,
+	).Scan(&rows).Error
+	if e != nil {
+		return e
+	}
+	byID := make(map[uuid.UUID]models.Money, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row.CompositePrice
+	}
+	for i := range parts {
+		resolved := byID[parts[i].ID]
+		parts[i].CompositePrice = resolved
+		if parts[i].UnitPrice != nil {
+			parts[i].EffectiveUnitPrice = *parts[i].UnitPrice
+		} else {
+			parts[i].EffectiveUnitPrice = resolved
+		}
+	}
+	return nil
+}
 func (r *Repository) Summary(ctx context.Context) (models.Summary, error) {
 	v := models.Summary{}
 	e := r.db.WithContext(ctx).Raw(`SELECT
@@ -243,6 +279,9 @@ func (r *Repository) Tree(ctx context.Context, id uuid.UUID, depth int) (*models
 	}
 	parts := []models.Part{}
 	if err = r.db.WithContext(ctx).Where("id IN ?", partIDs).Find(&parts).Error; err != nil {
+		return nil, err
+	}
+	if err = r.ResolvePrices(ctx, parts); err != nil {
 		return nil, err
 	}
 	byPart := map[uuid.UUID]*models.Part{}

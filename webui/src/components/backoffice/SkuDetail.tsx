@@ -147,6 +147,11 @@ function SkuBody({ part, items, page, search }: Loaded) {
               name={part.name}
               text={{ label: "Description", value: part.description }}
               metadata={part.metadata}
+              prices={{
+                compositePrice: part.composite_price ?? "0.00",
+                unitPrice: part.unit_price,
+                editableComposite: part.components.length === 0,
+              }}
               save={savePart.bind(null, part.id)}
             />
           </Stack>

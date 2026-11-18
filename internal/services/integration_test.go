@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/hoshina-dev/katsukura/internal/apperrors"
 	"github.com/hoshina-dev/katsukura/internal/database"
@@ -615,6 +616,162 @@ func TestArchivePartTakesItsItems(t *testing.T) {
 	// No items are left, but the slot's history still keeps it
 	if e = s.DeleteComponent(ctx, box.ID, legSlot.ID); e == nil || e.Error() != "The leg slot has installation history, so it cannot be removed" {
 		t.Fatalf("slot with history: %v", e)
+	}
+}
+
+func TestPartPrices(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	admin, e := database.Connect(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	adminPool, _ := admin.DB()
+	defer adminPool.Close()
+	schema := "price_" + uuid.New().String()[:8]
+	if e = admin.Exec("CREATE SCHEMA " + schema).Error; e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
+	u, e := url.Parse(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	query := u.Query()
+	query.Set("search_path", schema)
+	u.RawQuery = query.Encode()
+	db, e := database.Connect(u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	pool, _ := db.DB()
+	defer pool.Close()
+	if e = database.Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	s := services.New(repositories.New(db))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	leaf := &models.Part{SKU: "LEAF", Name: "Leaf"}
+	must(s.CreatePart(ctx, leaf))
+	if leaf.CompositePrice != models.ZeroMoney || leaf.EffectiveUnitPrice != models.ZeroMoney || leaf.UnitPrice != nil {
+		t.Fatalf("default prices: %+v", leaf)
+	}
+
+	updated, e := s.UpdatePart(ctx, leaf.ID, map[string]any{"composite_price": "10.5"})
+	must(e)
+	if updated.CompositePrice != "10.50" || updated.EffectiveUnitPrice != "10.50" {
+		t.Fatalf("leaf composite: %+v", updated)
+	}
+	override := models.Money("20.00")
+	updated, e = s.UpdatePart(ctx, leaf.ID, map[string]any{"unit_price": override})
+	must(e)
+	if updated.UnitPrice == nil || *updated.UnitPrice != "20.00" || updated.EffectiveUnitPrice != "20.00" || updated.CompositePrice != "10.50" {
+		t.Fatalf("unit override: %+v", updated)
+	}
+	updated, e = s.UpdatePart(ctx, leaf.ID, map[string]any{"unit_price": nil})
+	must(e)
+	if updated.UnitPrice != nil || updated.EffectiveUnitPrice != "10.50" {
+		t.Fatalf("clear override: %+v", updated)
+	}
+
+	free := &models.Part{SKU: "FREE", Name: "Free"}
+	must(s.CreatePart(ctx, free))
+	parent := &models.Part{SKU: "PARENT", Name: "Parent"}
+	must(s.CreatePart(ctx, parent))
+	must(patch(s.UpdatePart)(ctx, parent.ID, map[string]any{"composite_price": "99.00"}))
+	must(s.CreateComponent(ctx, parent.ID, &models.PartComponent{ChildPartID: leaf.ID, Slot: "a", RequiredQuantity: 2}))
+	must(s.CreateComponent(ctx, parent.ID, &models.PartComponent{ChildPartID: free.ID, Slot: "b", RequiredQuantity: 1}))
+
+	detail, e := s.Part(ctx, parent.ID)
+	must(e)
+	if detail.CompositePrice != "21.00" || detail.EffectiveUnitPrice != "21.00" {
+		t.Fatalf("rollup: composite=%s effective=%s", detail.CompositePrice, detail.EffectiveUnitPrice)
+	}
+	var stored models.Money
+	must(db.Raw("SELECT composite_price FROM parts WHERE id = ?", parent.ID).Scan(&stored).Error)
+	if stored != models.ZeroMoney {
+		t.Fatalf("stored parent composite not cleared: %s", stored)
+	}
+	if e = patch(s.UpdatePart)(ctx, parent.ID, map[string]any{"composite_price": "5.00"}); e == nil {
+		t.Fatal("set composite on assembly")
+	}
+	grand := &models.Part{SKU: "GRAND", Name: "Grand"}
+	must(s.CreatePart(ctx, grand))
+	must(s.CreateComponent(ctx, grand.ID, &models.PartComponent{ChildPartID: parent.ID, Slot: "p", RequiredQuantity: 3}))
+	detail, e = s.Part(ctx, grand.ID)
+	must(e)
+	if detail.CompositePrice != "63.00" {
+		t.Fatalf("nested rollup: %s", detail.CompositePrice)
+	}
+
+	if e = patch(s.UpdatePart)(ctx, leaf.ID, map[string]any{"composite_price": "1000000000000.00"}); e == nil {
+		t.Fatal("accepted oversize stored composite")
+	}
+	must(patch(s.UpdatePart)(ctx, leaf.ID, map[string]any{"composite_price": string(models.MaxStoredMoney)}))
+	detail, e = s.Part(ctx, parent.ID)
+	must(e)
+	wantRollup := models.Money("1999999999999.98") // 2 * MaxStoredMoney + free(0)
+	if detail.CompositePrice != wantRollup {
+		t.Fatalf("unconstrained rollup: got %s want %s", detail.CompositePrice, wantRollup)
+	}
+
+	must(patch(s.UpdatePart)(ctx, leaf.ID, map[string]any{"unit_price": "7.00"}))
+	components, e := s.Components(ctx, parent.ID)
+	must(e)
+	var leafChild *models.Part
+	for i := range components {
+		if components[i].ChildPart != nil && components[i].ChildPart.ID == leaf.ID {
+			leafChild = components[i].ChildPart
+			break
+		}
+	}
+	if leafChild == nil || leafChild.EffectiveUnitPrice != "7.00" || leafChild.CompositePrice != models.MaxStoredMoney {
+		t.Fatalf("components embed unresolved: %+v", leafChild)
+	}
+	parentDetail, e := s.Part(ctx, leaf.ID)
+	must(e)
+	if len(parentDetail.Parents) == 0 || parentDetail.Parents[0].ParentPart == nil {
+		t.Fatal("expected parent embed")
+	}
+	if parentDetail.Parents[0].ParentPart.CompositePrice != wantRollup {
+		t.Fatalf("parent embed unresolved: %s", parentDetail.Parents[0].ParentPart.CompositePrice)
+	}
+
+	must(s.CreateItem(ctx, &models.InventoryItem{PartID: leaf.ID}))
+	items, e := s.Items(ctx, models.Filter{PartID: &leaf.ID, Limit: 10})
+	must(e)
+	if items.Total != 1 || items.Data[0].Part == nil || items.Data[0].Part.EffectiveUnitPrice != "7.00" {
+		t.Fatalf("items embed unresolved: %+v", items.Data)
+	}
+
+	// Diamond BOM: shared mid node would explode without per-part memoization.
+	chain := make([]*models.Part, 12)
+	for i := range chain {
+		chain[i] = &models.Part{SKU: fmt.Sprintf("D%d", i), Name: fmt.Sprintf("Deep %d", i)}
+		must(s.CreatePart(ctx, chain[i]))
+	}
+	must(patch(s.UpdatePart)(ctx, chain[0].ID, map[string]any{"composite_price": "1.00"}))
+	for i := 1; i < len(chain); i++ {
+		must(s.CreateComponent(ctx, chain[i].ID, &models.PartComponent{
+			ChildPartID: chain[i-1].ID, Slot: "a", RequiredQuantity: 2,
+		}))
+		must(s.CreateComponent(ctx, chain[i].ID, &models.PartComponent{
+			ChildPartID: chain[i-1].ID, Slot: "b", RequiredQuantity: 2,
+		}))
+	}
+	deep, e := s.Part(ctx, chain[len(chain)-1].ID)
+	must(e)
+	if deep.CompositePrice != "4194304.00" { // 4^11 from dual slots of qty 2
+		t.Fatalf("deep shared BOM: %s", deep.CompositePrice)
 	}
 }
 

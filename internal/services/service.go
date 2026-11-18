@@ -41,7 +41,7 @@ func (s *Service) Parts(ctx context.Context, f models.Filter) (models.Page[model
 	})
 }
 
-// withStock fills each part's item and BOM row counts.
+// withStock fills each part's item and BOM row counts and resolves prices.
 func withStock(ctx context.Context, r Store, parts []models.Part) error {
 	ids := make([]uuid.UUID, len(parts))
 	for i, p := range parts {
@@ -52,14 +52,59 @@ func withStock(ctx context.Context, r Store, parts []models.Part) error {
 		return e
 	}
 	counts, e := r.ComponentCounts(ctx, ids)
+	if e != nil {
+		return e
+	}
 	for i, p := range parts {
 		v, n := stock[p.ID], counts[p.ID]
 		parts[i].Stock, parts[i].ComponentCount = &v, &n
 	}
-	return e
+	return r.ResolvePrices(ctx, parts)
 }
+
+// resolvePartPtrs resolves composite/effective prices on nested Part pointers.
+func resolvePartPtrs(ctx context.Context, r Store, parts []*models.Part) error {
+	if len(parts) == 0 {
+		return nil
+	}
+	seen := make(map[uuid.UUID]int, len(parts))
+	list := make([]models.Part, 0, len(parts))
+	for _, p := range parts {
+		if p == nil {
+			continue
+		}
+		if _, ok := seen[p.ID]; ok {
+			continue
+		}
+		seen[p.ID] = len(list)
+		list = append(list, *p)
+	}
+	if e := r.ResolvePrices(ctx, list); e != nil {
+		return e
+	}
+	for _, p := range parts {
+		if p == nil {
+			continue
+		}
+		*p = list[seen[p.ID]]
+	}
+	return nil
+}
+
 func (s *Service) Items(ctx context.Context, f models.Filter) (models.Page[models.InventoryItem], error) {
-	return read(ctx, s, func(r Store) (models.Page[models.InventoryItem], error) { return r.Items(ctx, f) })
+	return read(ctx, s, func(r Store) (models.Page[models.InventoryItem], error) {
+		page, e := r.Items(ctx, f)
+		if e != nil {
+			return page, e
+		}
+		parts := make([]*models.Part, 0, len(page.Data))
+		for i := range page.Data {
+			if page.Data[i].Part != nil {
+				parts = append(parts, page.Data[i].Part)
+			}
+		}
+		return page, resolvePartPtrs(ctx, r, parts)
+	})
 }
 func (s *Service) Summary(ctx context.Context) (models.Summary, error) {
 	return read(ctx, s, func(r Store) (models.Summary, error) { return r.Summary(ctx) })
@@ -101,6 +146,15 @@ func (s *Service) Part(ctx context.Context, id uuid.UUID) (*models.PartDetail, e
 		if parents == nil {
 			parents = []models.PartComponent{}
 		}
+		parentParts := make([]*models.Part, 0, len(parents))
+		for i := range parents {
+			if parents[i].ParentPart != nil {
+				parentParts = append(parentParts, parents[i].ParentPart)
+			}
+		}
+		if e := resolvePartPtrs(ctx, r, parentParts); e != nil {
+			return nil, e
+		}
 		return &models.PartDetail{Part: part[0], Components: c, Parents: parents}, nil
 	})
 }
@@ -109,7 +163,17 @@ func (s *Service) Components(ctx context.Context, id uuid.UUID) ([]models.PartCo
 		if _, e := r.GetPart(ctx, id); e != nil {
 			return nil, e
 		}
-		return r.Components(ctx, id)
+		c, e := r.Components(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		children := make([]*models.Part, 0, len(c))
+		for i := range c {
+			if c[i].ChildPart != nil {
+				children = append(children, c[i].ChildPart)
+			}
+		}
+		return c, resolvePartPtrs(ctx, r, children)
 	})
 }
 func (s *Service) Item(ctx context.Context, id uuid.UUID) (*models.ItemDetail, error) {
@@ -123,7 +187,27 @@ func (s *Service) Item(ctx context.Context, id uuid.UUID) (*models.ItemDetail, e
 			return nil, e
 		}
 		h, e := r.Installations(ctx, id, false)
-		return &models.ItemDetail{InventoryItem: *i, Components: c, History: h}, e
+		if e != nil {
+			return nil, e
+		}
+		parts := []*models.Part{}
+		if i.Part != nil {
+			parts = append(parts, i.Part)
+		}
+		for j := range c {
+			if c[j].ComponentItem != nil && c[j].ComponentItem.Part != nil {
+				parts = append(parts, c[j].ComponentItem.Part)
+			}
+		}
+		for j := range h {
+			if h[j].ComponentItem != nil && h[j].ComponentItem.Part != nil {
+				parts = append(parts, h[j].ComponentItem.Part)
+			}
+		}
+		if e := resolvePartPtrs(ctx, r, parts); e != nil {
+			return nil, e
+		}
+		return &models.ItemDetail{InventoryItem: *i, Components: c, History: h}, nil
 	})
 }
 func (s *Service) Tree(ctx context.Context, id uuid.UUID, depth int) (*models.TreeNode, error) {
@@ -164,11 +248,43 @@ func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
 	p.Description = trimNullable(p.Description)
 	p.ID = uuid.New()
 	p.ArchivedAt = nil
+	if p.CompositePrice == "" {
+		p.CompositePrice = models.ZeroMoney
+	} else {
+		parsed, e := models.ParseMoney(string(p.CompositePrice))
+		if e != nil {
+			return apperrors.Invalid("composite_price must be a non-negative amount with at most two decimal places")
+		}
+		if parsed, e = models.EnforceStoredMoney(parsed); e != nil {
+			return apperrors.Invalid("composite_price must be at most " + string(models.MaxStoredMoney))
+		}
+		p.CompositePrice = parsed
+	}
+	if p.UnitPrice != nil {
+		parsed, e := models.ParseMoney(string(*p.UnitPrice))
+		if e != nil {
+			return apperrors.Invalid("unit_price must be a non-negative amount with at most two decimal places")
+		}
+		if parsed, e = models.EnforceStoredMoney(parsed); e != nil {
+			return apperrors.Invalid("unit_price must be at most " + string(models.MaxStoredMoney))
+		}
+		p.UnitPrice = &parsed
+	}
 	var e error
 	if p.Metadata, e = NewMetadata(p.Metadata); e != nil {
 		return e
 	}
-	return s.write(ctx, func(r Store) error { return r.Create(ctx, p) })
+	return s.write(ctx, func(r Store) error {
+		if e := r.Create(ctx, p); e != nil {
+			return e
+		}
+		parts := []models.Part{*p}
+		if e := r.ResolvePrices(ctx, parts); e != nil {
+			return e
+		}
+		*p = parts[0]
+		return nil
+	})
 }
 func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error {
 	if i.PartID == uuid.Nil {
@@ -422,18 +538,38 @@ func (s *Service) ArchiveItem(ctx context.Context, id uuid.UUID) error {
 	})
 }
 func (s *Service) UpdatePart(ctx context.Context, id uuid.UUID, p map[string]any) (v *models.Part, e error) {
-	if e = validatePatch(p, "sku name description metadata archived_at"); e != nil {
+	if e = validatePatch(p, "sku name description metadata archived_at composite_price unit_price"); e != nil {
 		return
 	}
 	e = s.write(ctx, func(r Store) error {
 		if _, e := r.GetPart(ctx, id); e != nil {
 			return e
 		}
+		if raw, ok := p["composite_price"]; ok {
+			price, _ := raw.(models.Money)
+			if price != models.ZeroMoney {
+				slots, e := r.Components(ctx, id)
+				if e != nil {
+					return e
+				}
+				if len(slots) > 0 {
+					return apperrors.Invalid("composite_price can only be set on parts without a bill of materials")
+				}
+			}
+		}
 		if e := r.Update(ctx, &models.Part{}, id, p); e != nil {
 			return e
 		}
 		v, e = r.GetPart(ctx, id)
-		return e
+		if e != nil {
+			return e
+		}
+		parts := []models.Part{*v}
+		if e := r.ResolvePrices(ctx, parts); e != nil {
+			return e
+		}
+		*v = parts[0]
+		return nil
 	})
 	return
 }
@@ -530,6 +666,26 @@ func validatePatch(p map[string]any, allowed string) error {
 				return apperrors.Invalid("required_quantity must be a positive integer")
 			}
 			p[k] = int(n)
+		case "composite_price":
+			if v == nil {
+				p[k] = models.ZeroMoney
+				continue
+			}
+			m, err := models.StoredMoneyFrom(v)
+			if err != nil {
+				return apperrors.Invalid("composite_price must be a non-negative amount with at most two decimal places, at most " + string(models.MaxStoredMoney))
+			}
+			p[k] = m
+		case "unit_price":
+			if v == nil {
+				p[k] = nil
+				continue
+			}
+			m, err := models.StoredMoneyFrom(v)
+			if err != nil {
+				return apperrors.Invalid("unit_price must be a non-negative amount with at most two decimal places, at most " + string(models.MaxStoredMoney))
+			}
+			p[k] = m
 		case "description", "serial_number":
 			if v == nil {
 				continue

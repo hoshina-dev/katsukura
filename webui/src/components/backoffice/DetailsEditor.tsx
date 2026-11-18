@@ -6,20 +6,28 @@ import {
   Box,
   Button,
   Group,
+  NumberInput,
   Stack,
   Text,
   Textarea,
   TextInput,
 } from "@mantine/core";
 import { useRouter } from "@/libs/nav";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
-import type { SubmitResult } from "@/app/actions";
-import type { Metadata } from "@/libs/inventory";
+import type { PartPrices, SubmitResult } from "@/app/actions";
+import type { Metadata, Money } from "@/libs/inventory";
 
 import { ChangedLabel, MetadataFields, useMetadataForm } from "./Metadata";
 import { Section } from "./Section";
 import { useUnsavedChanges } from "./useUnsavedChanges";
+
+export type PriceFields = {
+  compositePrice: Money;
+  unitPrice: Money | null;
+  // False when the unit has a bill of materials: composite is calculated
+  editableComposite: boolean;
+};
 
 interface DetailsEditorProps {
   title: string;
@@ -28,12 +36,19 @@ interface DetailsEditorProps {
   // Optional text field saved next to the metadata; blank saves null
   text?: { label: string; value: string | null };
   metadata: Metadata;
+  prices?: PriceFields;
   // Server action bound to the part or item being edited
   save: (
     metadata: Record<string, unknown>,
     text: string | null,
     name?: string,
+    prices?: PartPrices,
   ) => Promise<SubmitResult>;
+}
+
+function moneyInput(value: string | number): string {
+  if (value === "" || value === undefined || value === null) return "";
+  return String(value);
 }
 
 // Save validates on the backend; schema errors show on their fields
@@ -42,6 +57,7 @@ export function DetailsEditor({
   name: initialName,
   text,
   metadata,
+  prices: initialPrices,
   save,
 }: DetailsEditorProps) {
   const router = useRouter();
@@ -51,12 +67,48 @@ export function DetailsEditor({
   const [name, setName] = useState(initialName ?? "");
   const [savedName, setSavedName] = useState(name.trim());
   const nameChanged = initialName !== undefined && name.trim() !== savedName;
+  const [composite, setComposite] = useState<string | number>(
+    initialPrices?.compositePrice ?? "0.00",
+  );
+  const [unit, setUnit] = useState<string | number>(
+    initialPrices?.unitPrice ?? "",
+  );
+  const [savedComposite, setSavedComposite] = useState(
+    initialPrices?.compositePrice ?? "0.00",
+  );
+  const [savedUnit, setSavedUnit] = useState(initialPrices?.unitPrice ?? "");
+  // Remount does not happen when the last BOM row is removed; reset composite
+  // draft/baseline when leaf vs assembly mode flips so a stale calculated total
+  // is not written as the new leaf price.
+  const editableComposite = initialPrices?.editableComposite;
+  const prevEditableComposite = useRef(editableComposite);
+  useEffect(() => {
+    if (initialPrices === undefined) {
+      prevEditableComposite.current = undefined;
+      return;
+    }
+    if (prevEditableComposite.current !== initialPrices.editableComposite) {
+      setComposite(initialPrices.compositePrice);
+      setSavedComposite(initialPrices.compositePrice);
+      prevEditableComposite.current = initialPrices.editableComposite;
+    } else if (!initialPrices.editableComposite) {
+      setComposite(initialPrices.compositePrice);
+      setSavedComposite(initialPrices.compositePrice);
+    }
+  }, [initialPrices]);
+  const compositeChanged =
+    initialPrices !== undefined &&
+    initialPrices.editableComposite &&
+    moneyInput(composite) !== savedComposite;
+  const unitChanged =
+    initialPrices !== undefined && moneyInput(unit) !== savedUnit;
   const [justSaved, setJustSaved] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const textChanged = value.trim() !== savedValue;
-  const dirty = form.dirty || textChanged || nameChanged;
+  const dirty =
+    form.dirty || textChanged || nameChanged || compositeChanged || unitChanged;
 
   useUnsavedChanges(dirty);
 
@@ -83,12 +135,26 @@ export function DetailsEditor({
             setError("Name is required");
             return;
           }
+          const prices: PartPrices | undefined = initialPrices
+            ? {
+                unit_price: moneyInput(unit) === "" ? null : moneyInput(unit),
+                ...(initialPrices.editableComposite
+                  ? {
+                      composite_price:
+                        moneyInput(composite) === ""
+                          ? null
+                          : moneyInput(composite),
+                    }
+                  : {}),
+              }
+            : undefined;
           startTransition(async () => {
             // Throwing would replace the form with the error page and lose the draft
             const result = await save(
               parsed.metadata,
               value.trim() || null,
               initialName === undefined ? undefined : name.trim(),
+              prices,
             ).catch(
               (): SubmitResult => ({
                 error: "Could not save. Check your connection and try again.",
@@ -104,6 +170,12 @@ export function DetailsEditor({
               form.commit();
               setSavedValue(value.trim());
               setSavedName(name.trim());
+              // Clearing composite sends null and stores 0; keep draft and
+              // baseline aligned so the form is not left dirty after save.
+              const nextComposite = moneyInput(composite) || "0.00";
+              setComposite(nextComposite);
+              setSavedComposite(nextComposite);
+              setSavedUnit(moneyInput(unit));
               setJustSaved(true);
               router.refresh();
             }
@@ -131,6 +203,52 @@ export function DetailsEditor({
               autosize
               minRows={2}
             />
+          )}
+          {initialPrices && (
+            <Stack gap="sm">
+              <NumberInput
+                label={
+                  <ChangedLabel changed={compositeChanged}>
+                    Composite price
+                  </ChangedLabel>
+                }
+                description={
+                  initialPrices.editableComposite
+                    ? "Cost of this unit on its own"
+                    : "Sum of the bill of materials"
+                }
+                value={
+                  initialPrices.editableComposite
+                    ? composite
+                    : initialPrices.compositePrice
+                }
+                onChange={setComposite}
+                decimalScale={2}
+                fixedDecimalScale
+                min={0}
+                step={0.01}
+                disabled={!initialPrices.editableComposite}
+                error={fieldErrors.composite_price}
+              />
+              <NumberInput
+                label={
+                  <ChangedLabel changed={unitChanged}>Unit price</ChangedLabel>
+                }
+                description="Defaults to the composite price when left blank"
+                placeholder={String(
+                  initialPrices.editableComposite
+                    ? moneyInput(composite) || initialPrices.compositePrice
+                    : initialPrices.compositePrice,
+                )}
+                value={unit}
+                onChange={setUnit}
+                decimalScale={2}
+                fixedDecimalScale
+                min={0}
+                step={0.01}
+                error={fieldErrors.unit_price}
+              />
+            </Stack>
           )}
           <MetadataFields
             form={form}

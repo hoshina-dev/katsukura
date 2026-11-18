@@ -79,6 +79,8 @@ function qs(params: Record<string, string | number | undefined>) {
 // The API generates the SKU when it is omitted
 export type NewPart = Pick<Part, "name" | "description" | "metadata"> & {
   sku?: string;
+  composite_price?: string;
+  unit_price?: string | null;
 };
 
 export function createPart(part: NewPart) {
@@ -87,7 +89,11 @@ export function createPart(part: NewPart) {
 
 export function updatePart(
   id: string,
-  patch: Partial<Pick<Part, "name" | "description" | "metadata">>,
+  patch: Partial<Pick<Part, "name" | "description" | "metadata">> & {
+    // null clears / resets: composite_price -> 0.00, unit_price -> no override
+    composite_price?: string | null;
+    unit_price?: string | null;
+  },
 ) {
   return send<Part>("PATCH", `/parts/${id}`, patch);
 }
@@ -220,6 +226,7 @@ function toEntry(part: Part): CatalogEntry {
     imageUrl: imageUrls(part.metadata)[0] ?? null,
     stock: part.stock ?? { total: 0, in_use: 0, available: 0 },
     componentCount: part.component_count ?? 0,
+    effectiveUnitPrice: part.effective_unit_price ?? part.composite_price ?? "0.00",
   };
 }
 

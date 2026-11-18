@@ -6,12 +6,20 @@ export type Metadata = Record<string, unknown> & {
   image_urls?: string[] | null;
 };
 
+// Decimal string from the API, e.g. "12.50"
+export type Money = string;
+
 export type Part = {
   id: string;
   sku: string;
   name: string;
   description: string | null;
   metadata: Metadata;
+  // Resolved from the BOM for assemblies; stored on leaf parts (default "0.00")
+  composite_price: Money;
+  // Optional override; null means effective_unit_price follows composite_price
+  unit_price: Money | null;
+  effective_unit_price: Money;
   archived_at: string | null;
   // Filled on part lists and details
   stock?: Stock;
@@ -105,6 +113,7 @@ export type CatalogEntry = {
   imageUrl: string | null;
   stock: Stock;
   componentCount: number;
+  effectiveUnitPrice: Money;
 };
 
 export type SearchParams = Record<string, string | string[] | undefined>;
