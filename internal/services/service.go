@@ -248,6 +248,10 @@ func (s *Service) CreatePart(ctx context.Context, p *models.Part) error {
 	p.Description = trimNullable(p.Description)
 	p.ID = uuid.New()
 	p.ArchivedAt = nil
+	if p.SerialAware == nil {
+		aware := true
+		p.SerialAware = &aware
+	}
 	if p.CompositePrice == "" {
 		p.CompositePrice = models.ZeroMoney
 	} else {
@@ -298,8 +302,14 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 		return e
 	}
 	return s.write(ctx, func(r Store) error {
-		if _, e := r.GetPart(ctx, i.PartID); e != nil {
+		p, e := r.GetPart(ctx, i.PartID)
+		if e != nil {
 			return e
+		}
+		if !partSerialAware(p) {
+			if i.SerialNumber != nil {
+				return apperrors.Invalid("serial_number is not allowed for parts that do not track serial numbers")
+			}
 		}
 		return build(ctx, r, i.PartID, []*models.InventoryItem{i})
 	})
@@ -307,7 +317,7 @@ func (s *Service) CreateItem(ctx context.Context, i *models.InventoryItem) error
 
 // CreateItems adds count items of one part in a single transaction, each with
 // a copy of the part's metadata. serials is empty or has one entry per item;
-// a blank entry gets a generated serial number.
+// a blank entry gets a generated serial number when the part is serial-aware.
 func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int, serials []string) ([]models.InventoryItem, error) {
 	if count < 1 || count > MaxNewItems {
 		return nil, apperrors.Invalid(fmt.Sprintf("count must be between 1 and %d", MaxNewItems))
@@ -321,12 +331,24 @@ func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int, 
 		if e != nil {
 			return e
 		}
-		for i := range items {
-			serial := newSerialNumber()
-			if i < len(serials) && strings.TrimSpace(serials[i]) != "" {
-				serial = strings.TrimSpace(serials[i])
+		aware := partSerialAware(p)
+		if !aware {
+			for _, serial := range serials {
+				if strings.TrimSpace(serial) != "" {
+					return apperrors.Invalid("serial_numbers are not allowed for parts that do not track serial numbers")
+				}
 			}
-			items[i] = &models.InventoryItem{ID: uuid.New(), PartID: partID, SerialNumber: &serial, Metadata: p.Metadata}
+		}
+		for i := range items {
+			item := &models.InventoryItem{ID: uuid.New(), PartID: partID, Metadata: p.Metadata}
+			if aware {
+				serial := newSerialNumber()
+				if i < len(serials) && strings.TrimSpace(serials[i]) != "" {
+					serial = strings.TrimSpace(serials[i])
+				}
+				item.SerialNumber = &serial
+			}
+			items[i] = item
 		}
 		return build(ctx, r, partID, items)
 	})
@@ -338,6 +360,10 @@ func (s *Service) CreateItems(ctx context.Context, partID uuid.UUID, count int, 
 		v[i] = *item
 	}
 	return v, nil
+}
+
+func partSerialAware(p *models.Part) bool {
+	return p.SerialAware == nil || *p.SerialAware
 }
 
 // build creates items of a part and fills every BOM slot from available

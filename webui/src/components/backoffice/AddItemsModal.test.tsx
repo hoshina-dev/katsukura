@@ -21,6 +21,7 @@ const slot = (available: number): PartComponent => ({
     unit_price: null,
     effective_unit_price: "0.00",
     archived_at: null,
+    serial_aware: true,
     stock: { total: available, in_use: 0, available },
   },
 });
@@ -49,5 +50,23 @@ describe("AddItemsModal", () => {
       />,
     );
     expect(screen.queryByText("Taken from stock:")).not.toBeInTheDocument();
+  });
+
+  it("skips serial fields when the unit is not serial-aware", () => {
+    render(
+      <AddItemsModal
+        count={2}
+        slots={[]}
+        serialAware={false}
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByLabelText("Serial number for item 1"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/generated serial number/i),
+    ).not.toBeInTheDocument();
   });
 });

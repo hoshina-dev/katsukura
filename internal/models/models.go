@@ -180,6 +180,9 @@ type Part struct {
 	Name        string    `json:"name"`
 	Description *string   `json:"description"`
 	Metadata    JSONMap   `json:"metadata" gorm:"type:jsonb"`
+	// Whether items of this SKU get serial numbers. Pointer so an omitted
+	// create field does not become false under GORM's zero-value write.
+	SerialAware *bool `json:"serial_aware"`
 	// Stored leaf price (0 for assemblies); overwritten with the resolved
 	// part_composite_price() value on read responses.
 	CompositePrice Money `json:"composite_price" gorm:"type:numeric(14,2);not null;default:0"`

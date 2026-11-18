@@ -177,8 +177,12 @@ export async function savePart(
   );
 }
 
-export async function addItems(partId: string, serialNumbers: string[]) {
-  return mutate(() => createItems(partId, serialNumbers));
+export async function addItems(
+  partId: string,
+  count: number,
+  serialNumbers?: string[],
+) {
+  return mutate(() => createItems(partId, count, serialNumbers));
 }
 
 export async function deleteItems(itemIds: string[]) {

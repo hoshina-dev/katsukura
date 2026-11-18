@@ -451,6 +451,32 @@ func TestGeneratedSKUAndItemBatch(t *testing.T) {
 	if len(serials) != 3 {
 		t.Fatal("serial numbers repeated")
 	}
+	if part.SerialAware == nil || !*part.SerialAware {
+		t.Fatalf("omitted serial_aware should default to true: %+v", part.SerialAware)
+	}
+
+	untracked := &models.Part{Name: "Bolt", SerialAware: ptr(false)}
+	if e = s.CreatePart(ctx, untracked); e != nil {
+		t.Fatal(e)
+	}
+	if untracked.SerialAware == nil || *untracked.SerialAware {
+		t.Fatalf("serial_aware false not stored: %+v", untracked.SerialAware)
+	}
+	if _, e = s.CreateItems(ctx, untracked.ID, 2, []string{"SN-1", "SN-2"}); e == nil {
+		t.Fatal("serial numbers accepted for a part that does not track them")
+	}
+	blank, e := s.CreateItems(ctx, untracked.ID, 2, nil)
+	if e != nil || len(blank) != 2 {
+		t.Fatalf("unserialized batch: %v %d", e, len(blank))
+	}
+	for _, item := range blank {
+		if item.SerialNumber != nil {
+			t.Fatalf("expected null serial: %+v", item)
+		}
+	}
+	if e = s.CreateItem(ctx, &models.InventoryItem{PartID: untracked.ID, SerialNumber: ptr("NOPE")}); e == nil {
+		t.Fatal("CreateItem accepted a serial for an unserialized part")
+	}
 }
 
 func TestPartSortOrders(t *testing.T) {

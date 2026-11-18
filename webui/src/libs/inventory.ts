@@ -21,6 +21,7 @@ export type Part = {
   unit_price: Money | null;
   effective_unit_price: Money;
   archived_at: string | null;
+  serial_aware: boolean;
   // Filled on part lists and details
   stock?: Stock;
   component_count?: number;

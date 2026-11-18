@@ -51,6 +51,7 @@ interface InventoryInstancesProps {
   search: string;
   // The unit's BOM rows, with child_part and its stock loaded
   slots: PartComponent[];
+  serialAware?: boolean;
 }
 
 export function InventoryInstances({
@@ -61,6 +62,7 @@ export function InventoryInstances({
   page,
   search,
   slots,
+  serialAware = true,
 }: InventoryInstancesProps) {
   const router = useRouter();
   const { update } = useSearchParamUpdate();
@@ -107,7 +109,12 @@ export function InventoryInstances({
 
   const add = (serialNumbers: string[]) =>
     startTransition(async () => {
-      const result = await addItems(partId, serialNumbers);
+      const count = Number(quantity);
+      const result = await addItems(
+        partId,
+        count,
+        serialAware ? serialNumbers : undefined,
+      );
       setAddError(result.error ?? null);
       if (!result.error) {
         setAdding(false);
@@ -184,7 +191,7 @@ export function InventoryInstances({
             {error}
           </Alert>
         )}
-        {(total > 0 || search) && (
+        {serialAware && (total > 0 || search) && (
           <TextInput
             aria-label="Search items by serial number"
             placeholder="Search serial number"
@@ -199,7 +206,9 @@ export function InventoryInstances({
           <EmptyNote>
             {search
               ? `No items match “${search}”.`
-              : "No physical items yet. Add items to give each one a serial number; they start with this unit's metadata."}
+              : serialAware
+                ? "No physical items yet. Add items to give each one a serial number; they start with this unit's metadata."
+                : "No physical items yet. Add items to track stock; they start with this unit's metadata."}
           </EmptyNote>
         ) : (
           <Box style={{ overflowX: "auto" }} mx="-md">
@@ -271,6 +280,7 @@ export function InventoryInstances({
         <AddItemsModal
           count={Number(quantity)}
           slots={slots}
+          serialAware={serialAware}
           loading={pending}
           error={addError}
           onSubmit={add}

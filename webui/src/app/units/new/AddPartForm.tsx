@@ -3,6 +3,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Grid,
   GridCol,
   Group,
@@ -33,12 +34,14 @@ export function AddPartForm() {
   const metadataForm = useMetadataForm();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [serialAware, setSerialAware] = useState(true);
   const [composite, setComposite] = useState<string | number>("0.00");
   const [unit, setUnit] = useState<string | number>("");
   // The success redirect is a router navigation, which this doesn't guard
   useUnsavedChanges(
     name.trim() !== "" ||
       description.trim() !== "" ||
+      !serialAware ||
       moneyInput(composite) !== "0.00" ||
       moneyInput(unit) !== "" ||
       metadataForm.dirty,
@@ -60,6 +63,7 @@ export function AddPartForm() {
         name: name.trim(),
         description: description.trim() || null,
         metadata: parsed.metadata,
+        serial_aware: serialAware,
         composite_price: moneyInput(composite) || "0.00",
         unit_price: moneyInput(unit) === "" ? null : moneyInput(unit),
       });
@@ -99,6 +103,14 @@ export function AddPartForm() {
                 onChange={(event) => setDescription(event.currentTarget.value)}
                 autosize
                 minRows={2}
+              />
+              <Checkbox
+                label="Track serial numbers"
+                description="Turn off for products like nuts and bolts that do not need individual serial numbers."
+                checked={serialAware}
+                onChange={(event) =>
+                  setSerialAware(event.currentTarget.checked)
+                }
               />
               <NumberInput
                 label="Composite price"
