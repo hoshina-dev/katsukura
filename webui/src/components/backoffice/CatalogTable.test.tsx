@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import type { CatalogEntry } from "@/libs/inventory";
 import { render } from "@/tests/utils";
@@ -6,6 +6,7 @@ import { render } from "@/tests/utils";
 import { CatalogTable } from "./CatalogTable";
 
 const loadCatalogPage = vi.fn();
+const push = vi.fn();
 vi.mock("@/app/actions", () => ({
   loadCatalogPage: (...args: unknown[]) => loadCatalogPage(...args),
   deletePart: vi.fn(),
@@ -13,7 +14,9 @@ vi.mock("@/app/actions", () => ({
 }));
 vi.mock("@/libs/nav", async (original) => ({
   ...(await original<typeof import("@/libs/nav")>()),
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push, refresh: vi.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams("category=RF&page=2"),
 }));
 // The load-more marker is always in view
 vi.mock("@mantine/hooks", async (original) => ({
@@ -52,5 +55,19 @@ describe("CatalogTable", () => {
     render(<CatalogTable entries={[entry(1)]} total={1} query={query} />);
     expect(screen.getByText("Body with paint")).toBeInTheDocument();
     expect(screen.getByText("Assembly · 2 slots")).toBeInTheDocument();
+  });
+
+  it("reverses an active header sort and preserves the product filter", () => {
+    render(
+      <CatalogTable
+        entries={[entry(1)]}
+        total={1}
+        query={{ ...query, sort: "price" }}
+      />,
+    );
+    const control = screen.getByRole("button", { name: "Sort by Price, descending" });
+    expect(control.closest("th")).toHaveAttribute("aria-sort", "ascending");
+    fireEvent.click(control);
+    expect(push).toHaveBeenCalledWith("/?category=RF&sort=price&order=desc", { scroll: false });
   });
 });

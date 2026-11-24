@@ -279,13 +279,20 @@ type Filter struct {
 	PartID          *uuid.UUID
 	IncludeArchived bool
 	HasBOM          bool
+	Catalog         CatalogFilters
 	// Available: not installed in any item
 	Available bool
-	// Sort orders parts: newest (default), name, items, available_items
-	Sort   string
-	Limit  int
-	Offset int
+	Sort      string
+	Order     string
+	Limit     int
+	Offset    int
 }
+type CatalogFilters struct {
+	Category, Manufacturer, CountryOfOrigin, TemperatureStage string
+	Stock, Tracking                                           string
+	UnitType, BOMEditing                                      string
+}
+type CatalogFacets map[string][]string
 type Page[T any] struct {
 	Data   []T   `json:"data"`
 	Total  int64 `json:"total"`

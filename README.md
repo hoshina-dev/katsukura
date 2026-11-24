@@ -10,8 +10,9 @@ backoffice in `webui/` is a Vite and React app using TypeScript, Mantine, and
 Tabler icons. The browser calls `/api/v1` on the same origin. Customer-facing
 browsing lives in another frontend.
 
-Open **BOM** in the backoffice to browse and edit assemblies. Switch to
-**All units** to start a BOM for an existing unit.
+Open **BOM** in the backoffice to browse and edit assemblies. Change **Unit type**
+under **Filters** to browse other units, or choose **Start a BOM** to find units
+that can get their first bill of materials.
 Open **Dependency graph** to explore how units connect across the catalog,
 including standalone and archived units.
 
@@ -138,6 +139,7 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 | `/parts` | List/search/paginate and create SKU schemas; `has_bom=true` lists only assemblies; each listed part has `stock` (`total`, `in_use`, `available` item counts) and prices; create accepts `serial_aware` (bool, default true) |
 | `/parts/:id` | Read with BOM, `stock`, and prices; edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
+| `/parts/filters` | List distinct catalog metadata filter values. Use `unit_type` to scope options to assemblies or units without a BOM. |
 | `/bom/graph` | Read all unit nodes and BOM slots in one snapshot. Pass `include_archived=true` to include archived units and their retained relationships. |
 | `/parts/:id/items` | POST `{count, serial_numbers?}` (1–1000) to build items in one transaction, each with a copy of the part's metadata and its BOM filled from stock; for serial-aware parts, `serial_numbers` has one entry per item and a blank or missing entry gets a generated `RF-SN-` serial number; for parts with `serial_aware` false, serials stay null and a non-blank `serial_numbers` entry is rejected |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
@@ -160,9 +162,16 @@ non-zero `composite_price` on a part that has a BOM returns 400. Adding a BOM ro
 resets the parent's stored composite price to `0`.
 
 Lists accept `search`, `limit`, `offset`, and `include_archived`; inventory also accepts
-`part_id` and `available=true` (not installed anywhere; this is public stock). Parts
-also accept `sort`: `newest` (default), `name`, `items` (most items first) or
-`available_items` (most items not installed anywhere first). PATCH distinguishes omitted fields from explicit null. Null clears nullable
+`part_id` and `available=true` (not installed anywhere; this is public stock).
+Parts accept `sort` values `newest` (default), `name`, `price` (effective unit
+price), `items`, `in_use_items`, `available_items`, `utilisation`, `slots`, and
+`editing`, with optional `order=asc` or `order=desc`.
+
+Part and inventory catalogs can filter by `category`, `manufacturer`,
+`country_of_origin`, `temperature_stage`, `stock` (`available`, `in_use`,
+`empty`), `tracking` (`serial`, `quantity`), `unit_type` (`all`, `assembly`,
+`part`), and `bom_editing` (`editable`, `locked`). Inventory applies these filters
+to each item's unit. PATCH distinguishes omitted fields from explicit null. Null clears nullable
 fields; metadata must be an object that matches the metadata schema. Liveness is
 `/healthz`; database readiness is `/readyz`.
 

@@ -27,6 +27,7 @@ type Store interface {
 	ParentComponents(context.Context, uuid.UUID) ([]models.PartComponent, error)
 	Installations(context.Context, uuid.UUID, bool) ([]models.ItemComponent, error)
 	Parts(context.Context, models.Filter) (models.Page[models.Part], error)
+	CatalogFacets(context.Context, bool, string) (models.CatalogFacets, error)
 	Stock(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]models.Stock, error)
 	ComponentCounts(ctx context.Context, partIDs []uuid.UUID) (map[uuid.UUID]int64, error)
 	// ResolvePrices sets each part's composite_price to part_composite_price()

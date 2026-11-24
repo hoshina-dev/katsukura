@@ -15,6 +15,7 @@ vi.mock("@/libs/nav", async (original) => ({
 }));
 
 const box = () => screen.getByLabelText(/Search by name/);
+const query = { search: "desk", sort: "default" as const, page: 2 };
 
 describe("CatalogToolbar", () => {
   beforeEach(() => {
@@ -26,7 +27,7 @@ describe("CatalogToolbar", () => {
   afterEach(() => vi.useRealTimers());
 
   it("keeps the page when the query only gained spaces", () => {
-    render(<CatalogToolbar />);
+    render(<CatalogToolbar query={query} />);
     fireEvent.change(box(), { target: { value: "desk " } });
     act(() => vi.advanceTimersByTime(400));
     expect(replace).not.toHaveBeenCalled();
@@ -34,7 +35,7 @@ describe("CatalogToolbar", () => {
   });
 
   it("pushes the first change of a search, then replaces until blur", () => {
-    render(<CatalogToolbar />);
+    render(<CatalogToolbar query={query} />);
     fireEvent.change(box(), { target: { value: "chair" } });
     act(() => vi.advanceTimersByTime(400));
     expect(push).toHaveBeenCalledWith("/?q=chair", { scroll: false });
@@ -48,10 +49,10 @@ describe("CatalogToolbar", () => {
   });
 
   it("shows the address's query after a link clears it", () => {
-    const { rerender } = render(<CatalogToolbar />);
+    const { rerender } = render(<CatalogToolbar query={query} />);
     expect(box()).toHaveValue("desk");
     search = "";
-    rerender(<CatalogToolbar />);
+    rerender(<CatalogToolbar query={{ ...query, search: "" }} />);
     expect(box()).toHaveValue("");
     act(() => vi.advanceTimersByTime(400));
     // The old text is not written back

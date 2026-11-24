@@ -85,6 +85,25 @@ tr:hover .row-delete,
   min-width: 560px;
 }
 
+.catalog-sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  white-space: nowrap;
+}
+
+.catalog-sort-header svg {
+  flex-shrink: 0;
+  color: var(--mantine-color-gray-6);
+}
+
+.catalog-sort-header:hover,
+.catalog-sort-header[data-active],
+.catalog-sort-header[data-active] svg {
+  color: var(--mantine-color-signal-9);
+}
+
 .bom-graph-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);

@@ -5,7 +5,6 @@ import {
   Button,
   CloseButton,
   Group,
-  SegmentedControl,
   Skeleton,
   Stack,
   Table,
@@ -14,73 +13,75 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconInfoCircle, IconSearch, IconSitemap } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { IconInfoCircle, IconPlus, IconSearch, IconSitemap } from "@tabler/icons-react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   bomHref,
   type CatalogEntry,
+  type CatalogQuery,
   itemsLabel,
   LIST_PAGE_SIZE,
-  pageParam,
+  parseBomCatalogQuery,
   type PartDetail,
   type SearchParams,
   skuHref,
-  textParam,
 } from "@/libs/inventory";
 import { getCatalog, getPart, isMissing } from "@/libs/katsukuraApi";
 import { Link, useRefreshToken, useRouter, useSearchParams } from "@/libs/nav";
 
 import { BOM_LOCK_EXPLANATION, BomSection } from "./BomSection";
+import {
+  CatalogFiltersControl,
+  clearedCatalogFilters,
+  ClearCatalogFiltersButton,
+} from "./CatalogFilters";
+import { CatalogSortHeader, CatalogSortSelect } from "./CatalogSorting";
 import { IdTag, PageHeader } from "./PageHeader";
 import { Pager, useSearchParamUpdate } from "./Pager";
 import { PartImage } from "./PartImage";
 
+const bomSortFields = ["name", "price", "slots", "editing"] as const;
+
 export function BomDirectory({ params }: { params: SearchParams }) {
   const { update } = useSearchParamUpdate();
-  const search = textParam(params, "q");
-  const allUnits = textParam(params, "view") === "all";
-  const requestedPage = pageParam(params, "page");
-  const page =
-    requestedPage <= Math.floor(Number.MAX_SAFE_INTEGER / LIST_PAGE_SIZE)
-      ? requestedPage
-      : 1;
+  const query = useMemo(() => parseBomCatalogQuery(params), [params]);
+  const starting = query.filters?.unit_type === "part" && query.filters.bom_editing === "editable";
 
   return (
     <Stack gap="md">
       <PageHeader
         title="Bill of materials"
         actions={
-          <Button
-            component={Link}
-            href="/bom/graph"
-            variant="default"
-            leftSection={<IconSitemap size={16} />}
-          >
-            Dependency graph
-          </Button>
+          <>
+            <Button
+              component={Link}
+              href="/bom/graph"
+              variant="default"
+              leftSection={<IconSitemap size={16} />}
+            >
+              Dependency graph
+            </Button>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => update({
+                ...clearedCatalogFilters(true),
+                q: null,
+                unit_type: "part",
+                bom_editing: "editable",
+              }, true, true)}
+            >
+              Start a BOM
+            </Button>
+          </>
         }
       />
       <Group justify="space-between" align="flex-start">
-        <BomSearch search={search} />
-        <SegmentedControl
-          aria-label="Show units"
-          value={allUnits ? "all" : "assemblies"}
-          data={[
-            { value: "assemblies", label: "Assemblies" },
-            { value: "all", label: "All units" },
-          ]}
-          onChange={(value) =>
-            update({ view: value === "all" ? value : null }, true, true)
-          }
-        />
+        <BomSearch search={query.search} />
+        <CatalogSortSelect query={query} fields={bomSortFields} />
       </Group>
-      <BomList
-        key={JSON.stringify([search, allUnits, page])}
-        search={search}
-        allUnits={allUnits}
-        page={page}
-      />
+      <CatalogFiltersControl filters={query.filters} bom />
+      <BomList query={query} starting={starting} />
     </Stack>
   );
 }
@@ -129,27 +130,28 @@ function BomSearch({ search }: { search: string }) {
 }
 
 function BomList({
-  search,
-  allUnits,
-  page,
+  query,
+  starting,
 }: {
-  search: string;
-  allUnits: boolean;
-  page: number;
+  query: CatalogQuery;
+  starting: boolean;
 }) {
   const { params, update } = useSearchParamUpdate();
   const token = useRefreshToken();
+  const { page, search, filters } = query;
+  const assemblies = filters?.unit_type === "assembly";
+  const filtered = Object.keys(filters ?? {}).some((field) => field !== "unit_type") ||
+    filters?.unit_type === "part";
+  const queryKey = JSON.stringify(query);
   const [result, setResult] = useState<
-    { entries: CatalogEntry[]; total: number } | { error: string }
+    { key: string; entries: CatalogEntry[]; total: number } | { error: string }
   >();
 
   useEffect(() => {
     let current = true;
-    getCatalog({ search, sort: "name", page }, LIST_PAGE_SIZE, undefined, {
-      hasBom: !allUnits,
-    })
+    getCatalog(query, LIST_PAGE_SIZE)
       .then((result) => {
-        if (current) setResult(result);
+        if (current) setResult({ ...result, key: queryKey });
       })
       .catch((error: unknown) => {
         if (current) {
@@ -161,9 +163,10 @@ function BomList({
     return () => {
       current = false;
     };
-  }, [search, allUnits, page, token]);
+  }, [query, queryKey, token]);
 
-  const total = result && "total" in result ? result.total : undefined;
+  const pending = result && "key" in result && result.key !== queryKey;
+  const total = result && "total" in result && !pending ? result.total : undefined;
   const lastPage =
     total === undefined ? page : Math.max(1, Math.ceil(total / LIST_PAGE_SIZE));
   useEffect(() => {
@@ -181,16 +184,32 @@ function BomList({
       <Box className="panel" p="xl">
         <Stack gap="xs" align="center" ta="center">
           <Text fw={500}>
-            {search
-              ? `No ${allUnits ? "units" : "assemblies"} match “${search}”`
-              : allUnits
-                ? "No units yet"
-                : "No bills of materials yet"}
+            {starting && !search
+              ? "No units are ready for a new BOM"
+              : search
+                ? `No ${assemblies ? "assemblies" : "units"} match “${search}”`
+                : filtered
+                  ? "No units match these filters"
+                  : assemblies
+                    ? "No bills of materials yet"
+                    : "No units yet"}
           </Text>
-          {!allUnits && (
+          {starting && (
+            <>
+              <Text size="sm" c="dimmed">
+                A unit can get its first BOM when it has no components or inventory items.
+              </Text>
+              <Button component={Link} href="/units/new" variant="default" size="sm">
+                New unit
+              </Button>
+            </>
+          )}
+          {filtered ? (
+            <ClearCatalogFiltersButton bom />
+          ) : assemblies && (
             <Button
               variant="subtle"
-              onClick={() => update({ view: "all" }, true, true)}
+              onClick={() => update({ unit_type: "all", view: null }, true, true)}
             >
               Browse all units
             </Button>
@@ -200,28 +219,26 @@ function BomList({
     );
   }
 
-  const query = params.toString();
+  const searchParams = params.toString();
   return (
     <Stack gap="md">
+      {starting && !pending && (
+        <Text size="sm" c="gray.7">Choose a unit to add its first BOM.</Text>
+      )}
       <Box className="panel">
         <Table
           aria-label="BOM units"
+          aria-busy={pending}
           highlightOnHover
           horizontalSpacing="md"
           verticalSpacing="sm"
         >
           <Table.Thead>
             <Table.Tr>
-              <Table.Th scope="col">Unit</Table.Th>
-              <Table.Th scope="col" ta="right" w={112}>
-                Price
-              </Table.Th>
-              <Table.Th scope="col" ta="right" w={96} visibleFrom="sm">
-                Slots
-              </Table.Th>
-              <Table.Th scope="col" w={165} visibleFrom="sm">
-                Editing
-              </Table.Th>
+              <CatalogSortHeader label="Unit" field="name" query={query} />
+              <CatalogSortHeader label="Price" field="price" query={query} ta="right" w={112} />
+              <CatalogSortHeader label="Slots" field="slots" query={query} ta="right" w={96} visibleFrom="sm" />
+              <CatalogSortHeader label="Editing" field="editing" query={query} w={165} visibleFrom="sm" />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -230,7 +247,7 @@ function BomList({
                 <Table.Td style={{ overflowWrap: "anywhere" }}>
                   <Anchor
                     component={Link}
-                    href={bomHref(entry.id) + (query ? `?${query}` : "")}
+                    href={bomHref(entry.id) + (searchParams ? `?${searchParams}` : "")}
                     display="block"
                     size="sm"
                     fw={500}
@@ -287,7 +304,9 @@ function BomList({
           </Table.Tbody>
         </Table>
       </Box>
-      {lastPage > 1 ? (
+      {pending ? (
+        <Text size="sm" c="gray.7" role="status">Updating results…</Text>
+      ) : lastPage > 1 ? (
         <Pager page={page} pageCount={lastPage} total={result.total} />
       ) : (
         <Text size="sm" c="gray.7">

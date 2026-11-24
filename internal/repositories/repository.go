@@ -127,36 +127,6 @@ func (r *Repository) Installations(ctx context.Context, id uuid.UUID, active boo
 	e := q.Order("installed_at DESC, id DESC").Find(&v).Error
 	return v, e
 }
-func (r *Repository) Parts(ctx context.Context, f models.Filter) (models.Page[models.Part], error) {
-	v := models.Page[models.Part]{Data: []models.Part{}, Limit: f.Limit, Offset: f.Offset}
-	q := r.db.WithContext(ctx).Model(&models.Part{})
-	if !f.IncludeArchived {
-		q = q.Where("archived_at IS NULL")
-	}
-	if f.HasBOM {
-		q = q.Where("EXISTS (SELECT 1 FROM part_components pc WHERE pc.parent_part_id = parts.id)")
-	}
-	if f.Search != "" {
-		q = q.Where("sku ILIKE @s OR name ILIKE @s OR description ILIKE @s", sql.Named("s", like(f.Search)))
-	}
-	if e := q.Count(&v.Total).Error; e != nil {
-		return v, e
-	}
-	e := q.Order(partOrder[f.Sort]).Limit(f.Limit).Offset(f.Offset).Find(&v.Data).Error
-	return v, e
-}
-
-const itemCount = "(SELECT count(*) FROM inventory_items i WHERE i.part_id = parts.id AND i.archived_at IS NULL"
-
-// partOrder maps Filter.Sort to ORDER BY; ties fall back to name so pages are stable
-var partOrder = map[string]string{
-	"":                "created_at DESC, id DESC",
-	"newest":          "created_at DESC, id DESC",
-	"name":            "lower(name), id",
-	"items":           itemCount + ") DESC, lower(name), id",
-	"available_items": itemCount + " AND NOT EXISTS (SELECT 1 FROM item_components c WHERE c.component_item_id = i.id AND c.removed_at IS NULL)) DESC, lower(name), id",
-}
-
 func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[models.InventoryItem], error) {
 	v := models.Page[models.InventoryItem]{Data: []models.InventoryItem{}, Limit: f.Limit, Offset: f.Offset}
 	q := r.db.WithContext(ctx).Model(&models.InventoryItem{})
@@ -169,9 +139,13 @@ func (r *Repository) Items(ctx context.Context, f models.Filter) (models.Page[mo
 	if f.Available {
 		q = q.Where(notInstalled)
 	}
-	if f.Search != "" {
-		q = q.Joins("JOIN parts ON parts.id = inventory_items.part_id").Where("inventory_items.serial_number ILIKE @s OR parts.sku ILIKE @s OR parts.name ILIKE @s", sql.Named("s", like(f.Search)))
+	if f.Search != "" || f.Catalog != (models.CatalogFilters{}) {
+		q = q.Joins("JOIN parts ON parts.id = inventory_items.part_id")
 	}
+	if f.Search != "" {
+		q = q.Where("inventory_items.serial_number ILIKE @s OR parts.sku ILIKE @s OR parts.name ILIKE @s", sql.Named("s", like(f.Search)))
+	}
+	q = applyCatalogFilters(q, f.Catalog)
 	if e := q.Count(&v.Total).Error; e != nil {
 		return v, e
 	}

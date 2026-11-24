@@ -1,5 +1,5 @@
 import { Box, Group, SimpleGrid, Skeleton, Stack, Text } from "@mantine/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { PageError } from "@/app/error";
 import { Link, navigate, useRefreshToken } from "@/libs/nav";
@@ -21,6 +21,7 @@ import {
 import { findItemsBySerial, getCatalog } from "@/libs/katsukuraApi";
 
 import { CatalogToolbar } from "./CatalogControls";
+import { CatalogFiltersControl, ClearCatalogFiltersButton } from "./CatalogFilters";
 import { AssemblyBadge, CatalogTable } from "./CatalogTable";
 import { DeletePartButton } from "./DeletePartButton";
 import { PageHeader } from "./PageHeader";
@@ -61,6 +62,9 @@ function CatalogCard({ entry }: { entry: CatalogEntry }) {
               </Text>
             )}
           </div>
+          <Text size="sm" fw={600} className="tabular">
+            {entry.effectiveUnitPrice}
+          </Text>
           <AssemblyBadge count={entry.componentCount} />
           <StockMeter stock={entry.stock} w="100%" />
           <Text size="xs" c="dimmed" className="tabular">
@@ -72,7 +76,7 @@ function CatalogCard({ entry }: { entry: CatalogEntry }) {
   );
 }
 
-function NoResults({ total, search }: { total: number; search: string }) {
+function NoResults({ total, search, filtered }: { total: number; search: string; filtered: boolean }) {
   return (
     <Box className="panel" p="xl">
       <Stack gap={4} align="center" py="lg">
@@ -81,15 +85,18 @@ function NoResults({ total, search }: { total: number; search: string }) {
             ? "This page is past the last result"
             : search
               ? `No units match “${search}”`
-              : "No units yet"}
+              : filtered ? "No units match these filters" : "No units yet"}
         </Text>
         <Text size="sm" c="dimmed" ta="center">
           {total > 0
             ? "Go back a page, or clear the search."
-            : search
+            : filtered
+              ? "Clear a filter to broaden the results."
+              : search
               ? "Search looks at unit names, SKUs, descriptions and item serial numbers. Try a shorter term."
               : "Create the first unit with New unit; its SKU is generated for you."}
         </Text>
+        {filtered && <ClearCatalogFiltersButton />}
       </Stack>
     </Box>
   );
@@ -131,6 +138,10 @@ function pageHref(query: CatalogQuery, view: CatalogView, page: number) {
   const params = new URLSearchParams();
   if (query.search) params.set("q", query.search);
   if (query.sort !== "default") params.set("sort", query.sort);
+  if (query.order) params.set("order", query.order);
+  for (const [key, value] of Object.entries(query.filters ?? {})) {
+    params.set(key, value);
+  }
   if (view === "grid") params.set("view", view);
   if (page > 1) params.set("page", String(page));
   const search = params.toString();
@@ -146,12 +157,12 @@ export function CatalogResults({
 }) {
   const token = useRefreshToken();
   const queryKey = JSON.stringify([query, view]);
-  const seen = useRef(queryKey);
   const [state, setState] = useState<
     | { status: "loading" }
     | { status: "error"; message: string }
     | {
         status: "ready";
+        key: string;
         entries: CatalogEntry[];
         total: number;
         serials: Item[];
@@ -160,16 +171,14 @@ export function CatalogResults({
 
   useEffect(() => {
     let cancel = false;
-    if (seen.current !== queryKey) {
-      seen.current = queryKey;
-      setState({ status: "loading" });
-    }
     // The table scrolls from the start; the grid shows one page at a time
     Promise.all([
       view === "table"
         ? getCatalog({ ...query, page: 1 }, LIST_PAGE_SIZE)
         : getCatalog(query),
-      query.search ? findItemsBySerial(query.search) : Promise.resolve([]),
+      query.search
+        ? findItemsBySerial(query.search, 10, query.filters)
+        : Promise.resolve([]),
     ])
       .then(([{ entries, total }, serials]) => {
         if (cancel) return;
@@ -179,7 +188,7 @@ export function CatalogResults({
           navigate(pageHref(query, view, pageCount), true);
           return;
         }
-        setState({ status: "ready", entries, total, serials });
+        setState({ status: "ready", key: queryKey, entries, total, serials });
       })
       .catch((error: unknown) => {
         if (!cancel) {
@@ -198,6 +207,9 @@ export function CatalogResults({
   if (state.status === "loading") return <CatalogSkeleton view={view} />;
   if (state.status === "error") return <PageError message={state.message} />;
 
+  const pending = state.key !== queryKey;
+  if (pending && view === "grid") return <CatalogSkeleton view={view} />;
+
   const { entries, total, serials } = state;
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
   const matches = <SerialMatches items={serials} search={query.search} />;
@@ -206,18 +218,19 @@ export function CatalogResults({
     return serials.length > 0 ? (
       matches
     ) : (
-      <NoResults total={total} search={query.search} />
+      <NoResults total={total} search={query.search} filtered={Boolean(query.filters)} />
     );
   }
 
   if (view === "table") {
     return (
       <Stack gap="md">
-        {matches}
+        {!pending && matches}
         <CatalogTable
           entries={entries}
           total={total}
           query={{ ...query, page: 1 }}
+          pending={pending}
         />
       </Stack>
     );
@@ -264,13 +277,14 @@ export function CatalogSkeleton({ view }: { view: CatalogView }) {
 }
 
 export function Catalog({ params }: { params: SearchParams }) {
-  const query = parseCatalogQuery(params);
+  const query = useMemo(() => parseCatalogQuery(params), [params]);
   const view = parseCatalogView(params);
 
   return (
     <Stack gap="md">
       <PageHeader title="Units" />
-      <CatalogToolbar />
+      <CatalogToolbar query={query} />
+      <CatalogFiltersControl filters={query.filters} />
       <CatalogResults query={query} view={view} />
     </Stack>
   );

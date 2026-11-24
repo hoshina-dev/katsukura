@@ -210,6 +210,81 @@ func TestHTTPPartsWithBOM(t *testing.T) {
 	request(t, app, "GET", path+"&has_bom=yes", nil, 400)
 }
 
+func TestHTTPCatalogSortAndFilters(t *testing.T) {
+	app := realAPI(t)
+	const parts = "/api/v1/parts"
+	part := func(sku, price string, serialAware bool, metadata map[string]any, extra map[string]any) string {
+		body := object("sku", sku, "name", sku, "composite_price", price, "serial_aware", serialAware, "metadata", metadata)
+		for key, value := range extra {
+			body[key] = value
+		}
+		return id(t, request(t, app, "POST", parts, body, 201))
+	}
+	cable := part("CABLE", "10.00", true, object("category", []string{" RF ", "rf"}, "manufacturer", "Acme", "country_of_origin", "THA", "temperature_stage", 4), nil)
+	bracket := part("BRACKET", "3.00", false, object("category", []string{"Mechanical"}, "manufacturer", "Acme"), nil)
+	kit := part("KIT", "0.00", true, object("category", []string{"rf"}, "manufacturer", "ACME"), object("unit_price", "8.00"))
+	part("SPARE", "9.00", true, object(), nil)
+	for _, slot := range []struct {
+		child, name string
+		quantity    int
+	}{{cable, "cables", 2}, {bracket, "mount", 1}} {
+		request(t, app, "POST", parts+"/"+kit+"/components", object("child_part_id", slot.child, "slot", slot.name, "required_quantity", slot.quantity), 201)
+	}
+	request(t, app, "POST", parts+"/"+cable+"/items", object("count", 3, "serial_numbers", []string{"CABLE-1", "CABLE-2", "CABLE-3"}), 201)
+	request(t, app, "POST", parts+"/"+bracket+"/items", object("count", 1), 201)
+	request(t, app, "POST", parts+"/"+kit+"/items", object("count", 1), 201)
+
+	check := func(query, want string, total int) {
+		t.Helper()
+		list := request(t, app, "GET", parts+"?"+query, nil, 200)
+		var skus []string
+		for _, item := range list["data"].([]any) {
+			skus = append(skus, item.(map[string]any)["sku"].(string))
+		}
+		if strings.Join(skus, " ") != want || list["total"] != float64(total) {
+			t.Fatalf("%s: got %v of %v, want %s of %d", query, skus, list["total"], want, total)
+		}
+	}
+	check("sort=price", "BRACKET KIT SPARE CABLE", 4)
+	check("sort=price&order=desc&limit=2&offset=1", "SPARE KIT", 4)
+	check("sort=in_use_items", "CABLE BRACKET KIT SPARE", 4)
+	check("sort=utilisation", "BRACKET CABLE KIT SPARE", 4)
+	check("sort=editing", "SPARE BRACKET CABLE KIT", 4)
+	check("sort=slots", "KIT BRACKET CABLE SPARE", 4)
+	check("category=rf&manufacturer=acme&sort=price", "KIT CABLE", 2)
+	check("country_of_origin=tha&temperature_stage=4.0", "CABLE", 1)
+	check("category=rf&has_bom=true", "KIT", 1)
+	check("unit_type=assembly&bom_editing=locked", "KIT", 1)
+	check("unit_type=assembly&bom_editing=editable", "", 0)
+	check("unit_type=part&bom_editing=editable", "SPARE", 1)
+	check("unit_type=all&bom_editing=locked&sort=name", "BRACKET CABLE KIT", 3)
+	check("stock=available&sort=name", "CABLE KIT", 2)
+	check("stock=in_use&tracking=quantity", "BRACKET", 1)
+	check("stock=empty", "SPARE", 1)
+	request(t, app, "GET", parts+"?order=no", nil, 400)
+	request(t, app, "GET", parts+"?unit_type=unknown", nil, 400)
+	request(t, app, "GET", parts+"?bom_editing=unknown", nil, 400)
+	request(t, app, "GET", parts+"?temperature_stage=%22bad%22", nil, 400)
+
+	facets := request(t, app, "GET", parts+"/filters", nil, 200)
+	if len(facets["category"].([]any)) != 2 || len(facets["manufacturer"].([]any)) != 1 ||
+		facets["temperature_stage"].([]any)[0] != "4" {
+		t.Fatalf("unexpected catalog facets: %+v", facets)
+	}
+	assemblies := request(t, app, "GET", parts+"/filters?has_bom=true", nil, 200)
+	if len(assemblies["category"].([]any)) != 1 || len(assemblies["country_of_origin"].([]any)) != 0 {
+		t.Fatalf("unexpected assembly facets: %+v", assemblies)
+	}
+	standalone := request(t, app, "GET", parts+"/filters?unit_type=part", nil, 200)
+	if len(standalone["category"].([]any)) != 2 || len(standalone["country_of_origin"].([]any)) != 1 {
+		t.Fatalf("unexpected facets for units without a BOM: %+v", standalone)
+	}
+	serial := request(t, app, "GET", "/api/v1/inventory?search=CABLE-1&category=rf&stock=available", nil, 200)
+	if serial["total"] != float64(1) {
+		t.Fatalf("catalog filters dropped a matching serial search: %+v", serial)
+	}
+}
+
 func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	app := realAPI(t)
 	part := func(sku string) string {

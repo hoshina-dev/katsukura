@@ -107,11 +107,42 @@ export const ITEMS_PAGE_PARAM = "items_page";
 export const ITEMS_SEARCH_PARAM = "items_q";
 
 export type CatalogView = "grid" | "table";
-export type CatalogSort = "default" | "name" | "amount";
+export const catalogSortDefaults = {
+  default: "desc",
+  name: "asc",
+  price: "asc",
+  amount: "desc",
+  in_use: "desc",
+  available: "desc",
+  utilisation: "desc",
+  slots: "desc",
+  editing: "asc",
+} as const;
+
+export type CatalogSort = keyof typeof catalogSortDefaults;
+export type CatalogOrder = "asc" | "desc";
+export const catalogFilterKeys = [
+  "unit_type",
+  "bom_editing",
+  "stock",
+  "tracking",
+  "category",
+  "manufacturer",
+  "country_of_origin",
+  "temperature_stage",
+] as const;
+export type CatalogFilter = (typeof catalogFilterKeys)[number];
+export type CatalogFilters = Partial<Record<CatalogFilter, string>>;
+export type CatalogFacets = Record<
+  Exclude<CatalogFilter, "unit_type" | "bom_editing" | "stock" | "tracking">,
+  string[]
+>;
 
 export type CatalogQuery = {
   search: string;
   sort: CatalogSort;
+  order?: CatalogOrder;
+  filters?: CatalogFilters;
   page: number;
 };
 
@@ -143,13 +174,37 @@ export function pageParam(params: SearchParams, key: string) {
   return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
-export function parseCatalogQuery(params: SearchParams): CatalogQuery {
+export function parseCatalogQuery(
+  params: SearchParams,
+  defaultSort: CatalogSort = "default",
+): CatalogQuery {
   const sort = param(params, "sort");
-  return {
-    search: param(params, "q").trim(),
-    sort: sort === "name" || sort === "amount" ? sort : "default",
-    page: pageParam(params, "page"),
+  const order = param(params, "order");
+  const page = pageParam(params, "page");
+  const query: CatalogQuery = {
+    search: textParam(params, "q"),
+    sort: Object.hasOwn(catalogSortDefaults, sort) ? sort as CatalogSort : defaultSort,
+    page: page <= Math.floor(Number.MAX_SAFE_INTEGER / LIST_PAGE_SIZE) ? page : 1,
   };
+  if (order === "asc" || order === "desc") query.order = order;
+  const filters: CatalogFilters = {};
+  for (const key of catalogFilterKeys) {
+    const value = textParam(params, key);
+    if (key === "unit_type" && value !== "assembly" && value !== "part") continue;
+    if (key === "bom_editing" && value !== "editable" && value !== "locked") continue;
+    if (value) filters[key] = value;
+  }
+  if (Object.keys(filters).length > 0) query.filters = filters;
+  return query;
+}
+
+export function parseBomCatalogQuery(params: SearchParams): CatalogQuery {
+  const query = parseCatalogQuery(params, "name");
+  const allUnits = textParam(params, "unit_type") === "all" || textParam(params, "view") === "all";
+  if (!query.filters?.unit_type && !allUnits) {
+    query.filters = { ...query.filters, unit_type: "assembly" };
+  }
+  return query;
 }
 
 export function parseCatalogView(params: SearchParams): CatalogView {

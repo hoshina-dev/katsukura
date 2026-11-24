@@ -45,6 +45,7 @@ func New(api handlers.API, ready func(context.Context) error, opts Options) *fib
 	v.Post("/uploads", handlers.UploadImage(opts.Images))
 	p := v.Group("/parts")
 	p.Get("/", h.ListParts)
+	p.Get("/filters", h.CatalogFacets)
 	p.Post("/", h.CreatePart)
 	p.Get("/:id", h.Part)
 	p.Patch("/:id", h.PatchPart)

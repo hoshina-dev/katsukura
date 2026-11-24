@@ -25,6 +25,7 @@ type API interface {
 	Item(context.Context, uuid.UUID) (*models.ItemDetail, error)
 	Components(context.Context, uuid.UUID) ([]models.PartComponent, error)
 	BOMGraph(context.Context, bool) (models.BOMGraph, error)
+	CatalogFacets(context.Context, bool, string) (models.CatalogFacets, error)
 	CreatePart(context.Context, *models.Part) error
 	CreateItem(context.Context, *models.InventoryItem) error
 	CreateItems(context.Context, uuid.UUID, int, []string) ([]models.InventoryItem, error)
@@ -121,11 +122,7 @@ func filter(c *fiber.Ctx) (f models.Filter, e error) {
 	if f.Available, e = flag(c, "available"); e != nil {
 		return
 	}
-	switch f.Sort = c.Query("sort"); f.Sort {
-	case "", "newest", "name", "items", "available_items":
-	default:
-		return f, apperrors.Invalid("sort must be newest, name, items or available_items")
-	}
+	f.Sort = c.Query("sort")
 	if raw := c.Query("part_id"); raw != "" {
 		v, e := uuid.Parse(raw)
 		if e != nil {
@@ -169,8 +166,70 @@ func (h *Handler) ListParts(c *fiber.Ctx) error {
 	if f.HasBOM, e = flag(c, "has_bom"); e != nil {
 		return e
 	}
+	switch f.Sort {
+	case "", "newest", "name", "price", "items", "in_use_items", "available_items", "utilisation", "slots", "editing":
+	default:
+		return apperrors.Invalid("Invalid sort")
+	}
+	if f.Order = c.Query("order"); f.Order != "" && f.Order != "asc" && f.Order != "desc" {
+		return apperrors.Invalid("Invalid order")
+	}
+	if f.Catalog, e = catalogFilters(c); e != nil {
+		return e
+	}
 	v, e := h.api.Parts(c.UserContext(), f)
 	return reply(c, 200, v, e)
+}
+
+func catalogFilters(c *fiber.Ctx) (models.CatalogFilters, error) {
+	f := models.CatalogFilters{
+		Category:         strings.TrimSpace(c.Query("category")),
+		Manufacturer:     strings.TrimSpace(c.Query("manufacturer")),
+		CountryOfOrigin:  strings.TrimSpace(c.Query("country_of_origin")),
+		TemperatureStage: strings.TrimSpace(c.Query("temperature_stage")),
+		Stock:            c.Query("stock"),
+		Tracking:         c.Query("tracking"),
+		UnitType:         c.Query("unit_type"),
+		BOMEditing:       c.Query("bom_editing"),
+	}
+	if stage := f.TemperatureStage; stage != "" {
+		if _, err := strconv.ParseFloat(stage, 64); err != nil || !json.Valid([]byte(stage)) {
+			return f, apperrors.Invalid("Invalid temperature_stage")
+		}
+	}
+	switch f.Stock {
+	case "", "available", "in_use", "empty":
+	default:
+		return f, apperrors.Invalid("Invalid stock")
+	}
+	switch f.Tracking {
+	case "", "serial", "quantity":
+	default:
+		return f, apperrors.Invalid("Invalid tracking")
+	}
+	switch f.UnitType {
+	case "", "all", "assembly", "part":
+	default:
+		return f, apperrors.Invalid("Invalid unit_type")
+	}
+	switch f.BOMEditing {
+	case "", "editable", "locked":
+	default:
+		return f, apperrors.Invalid("Invalid bom_editing")
+	}
+	return f, nil
+}
+func (h *Handler) CatalogFacets(c *fiber.Ctx) error {
+	hasBOM, e := flag(c, "has_bom")
+	if e != nil {
+		return e
+	}
+	f, e := catalogFilters(c)
+	if e != nil {
+		return e
+	}
+	facets, e := h.api.CatalogFacets(c.UserContext(), hasBOM, f.UnitType)
+	return reply(c, 200, facets, e)
 }
 func (h *Handler) BOMGraph(c *fiber.Ctx) error {
 	archived, e := flag(c, "include_archived")
@@ -183,6 +242,14 @@ func (h *Handler) BOMGraph(c *fiber.Ctx) error {
 func (h *Handler) ListItems(c *fiber.Ctx) error {
 	f, e := filter(c)
 	if e != nil {
+		return e
+	}
+	switch f.Sort {
+	case "", "newest", "name", "items", "available_items":
+	default:
+		return apperrors.Invalid("sort must be newest, name, items or available_items")
+	}
+	if f.Catalog, e = catalogFilters(c); e != nil {
 		return e
 	}
 	v, e := h.api.Items(c.UserContext(), f)

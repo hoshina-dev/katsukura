@@ -4,7 +4,6 @@ import {
   Button,
   Group,
   SegmentedControl,
-  Select,
   TextInput,
   VisuallyHidden,
 } from "@mantine/core";
@@ -16,17 +15,13 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { Link } from "@/libs/nav";
+import type { CatalogQuery } from "@/libs/inventory";
 import { useEffect, useRef, useState } from "react";
 
 import { useSearchParamUpdate } from "./Pager";
+import { CatalogSortSelect, unitSortFields } from "./CatalogSorting";
 
-const SORTS = [
-  { value: "default", label: "Newest first" },
-  { value: "name", label: "Name, A–Z" },
-  { value: "amount", label: "Most stock" },
-];
-
-export function CatalogToolbar() {
+export function CatalogToolbar({ query }: { query: CatalogQuery }) {
   const { params, update } = useSearchParamUpdate();
   const urlQuery = (params.get("q") ?? "").trim();
   const [search, setSearch] = useState(urlQuery);
@@ -70,16 +65,7 @@ export function CatalogToolbar() {
         }}
         style={{ flex: "1 1 240px" }}
       />
-      <Select
-        aria-label="Sort"
-        data={SORTS}
-        value={params.get("sort") ?? "default"}
-        onChange={(value) =>
-          update({ sort: !value || value === "default" ? null : value })
-        }
-        allowDeselect={false}
-        w={170}
-      />
+      <CatalogSortSelect query={query} fields={unitSortFields} />
       <SegmentedControl
         aria-label="View"
         value={params.get("view") ?? "table"}

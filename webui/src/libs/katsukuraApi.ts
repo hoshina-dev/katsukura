@@ -4,6 +4,8 @@ import {
   type BomGraph,
   CATALOG_PAGE_SIZE,
   type CatalogEntry,
+  type CatalogFacets,
+  type CatalogFilters,
   type CatalogQuery,
   imageUrls,
   type Item,
@@ -172,9 +174,9 @@ export function listItems(partId: string, filter: ItemFilter = {}) {
 
 // Items of any unit whose serial number contains the text; the API also
 // matches unit names and SKUs, so those rows are dropped here
-export async function findItemsBySerial(serial: string, limit = 10) {
+export async function findItemsBySerial(serial: string, limit = 10, filters?: CatalogFilters) {
   const list = await get<List<Item>>(
-    `/inventory?${qs({ search: serial, limit })}`,
+    `/inventory?${qs({ search: serial, limit, ...filters })}`,
   );
   const needle = serial.toLowerCase();
   return list.data.filter((item) =>
@@ -230,6 +232,10 @@ export function searchParts(search: string, limit = 20) {
 
 // Catalog
 
+export function getCatalogFacets(unitType: string) {
+  return get<CatalogFacets>(`/parts/filters?${qs({ unit_type: unitType })}`);
+}
+
 function toEntry(part: Part): CatalogEntry {
   return {
     id: part.id,
@@ -250,16 +256,24 @@ export async function getCatalog(
   query: CatalogQuery,
   pageSize = CATALOG_PAGE_SIZE,
   offset = (query.page - 1) * pageSize,
-  { hasBom = false } = {},
 ) {
-  const sort = { default: undefined, name: "name", amount: "items" }[
-    query.sort
-  ];
+  const sort = {
+    default: undefined,
+    name: "name",
+    price: "price",
+    amount: "items",
+    in_use: "in_use_items",
+    available: "available_items",
+    utilisation: "utilisation",
+    slots: "slots",
+    editing: "editing",
+  }[query.sort];
   const list = await get<List<Part>>(
     `/parts?${qs({
       search: query.search,
       sort,
-      has_bom: flag(hasBom),
+      order: query.order,
+      ...query.filters,
       limit: pageSize,
       offset,
     })}`,

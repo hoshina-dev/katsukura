@@ -26,6 +26,7 @@ import {
 } from "@/libs/inventory";
 
 import { DeletePartButton } from "./DeletePartButton";
+import { CatalogSortHeader } from "./CatalogSorting";
 import { PartImage } from "./PartImage";
 import { StockMeter } from "./StockCounts";
 
@@ -34,7 +35,15 @@ interface CatalogTableProps {
   entries: CatalogEntry[];
   total: number;
   query: CatalogQuery;
+  pending?: boolean;
 }
+
+type CatalogBatch = {
+  first: CatalogEntry[];
+  entries: CatalogEntry[];
+  loading: boolean;
+  stopped: string | null;
+};
 
 // Marks a unit with a bill of materials
 export function AssemblyBadge({ count }: { count: number }) {
@@ -57,34 +66,45 @@ export function CatalogTable({
   entries: first,
   total,
   query,
+  pending = false,
 }: CatalogTableProps) {
   const router = useRouter();
-  const [entries, setEntries] = useState(first);
-  const [loading, setLoading] = useState(false);
-  const [stopped, setStopped] = useState<string | null>(null);
+  const [batch, setBatch] = useState<CatalogBatch>({
+    first, entries: first, loading: false, stopped: null,
+  });
+  if (batch.first !== first) {
+    setBatch({ first, entries: first, loading: false, stopped: null });
+  }
+  const { entries, loading, stopped } = batch;
   const { ref, entry } = useIntersection({ threshold: 0 });
   // A delete refreshes the page, so total already excludes deleted rows
   const hasMore = entries.length < total && !stopped;
 
   useEffect(() => {
-    if (!entry?.isIntersecting || !hasMore || loading) return;
-    setLoading(true);
+    if (pending || !entry?.isIntersecting || !hasMore || loading) return;
+    setBatch((current) => ({ ...current, loading: true }));
     // Continue after the rows shown, so a deleted row doesn't skip one
     loadCatalogPage(query, entries.length)
       .then((next) => {
         // Rows can shift while scrolling; skip any already shown
-        setEntries((current) => {
-          const seen = new Set(current.map((row) => row.id));
-          return [
+        setBatch((current) => {
+          if (current.first !== first) return current;
+          const seen = new Set(current.entries.map((row) => row.id));
+          const newRows = next.entries.filter((row) => !seen.has(row.id));
+          return {
             ...current,
-            ...next.entries.filter((row) => !seen.has(row.id)),
-          ];
+            loading: false,
+            entries: [...current.entries, ...newRows],
+            stopped: newRows.length === 0 ? "No more results" : null,
+          };
         });
-        if (next.entries.length === 0) setStopped("No more results");
       })
-      .catch(() => setStopped("Could not load more results"))
-      .finally(() => setLoading(false));
-  }, [entry?.isIntersecting, hasMore, loading, query, entries.length]);
+      .catch(() =>
+        setBatch((current) => current.first === first
+          ? { ...current, loading: false, stopped: "Could not load more results" }
+          : current),
+      );
+  }, [entry?.isIntersecting, first, hasMore, loading, pending, query, entries.length]);
 
   return (
     <Box
@@ -92,6 +112,7 @@ export function CatalogTable({
       style={{ overflow: "auto", maxHeight: "calc(100vh - 220px)" }}
     >
       <Table
+        aria-busy={pending || loading}
         highlightOnHover
         stickyHeader
         verticalSpacing={8}
@@ -100,22 +121,12 @@ export function CatalogTable({
       >
         <TableThead>
           <TableTr>
-            <TableTh>Unit</TableTh>
-            <TableTh ta="right" w={90} visibleFrom="sm">
-              Price
-            </TableTh>
-            <TableTh ta="right" w={90} visibleFrom="sm">
-              Total
-            </TableTh>
-            <TableTh ta="right" w={90} visibleFrom="sm">
-              In use
-            </TableTh>
-            <TableTh ta="right" w={90} visibleFrom="sm">
-              Available
-            </TableTh>
-            <TableTh w={140} visibleFrom="sm">
-              Utilisation
-            </TableTh>
+            <CatalogSortHeader label="Unit" field="name" query={query} />
+            <CatalogSortHeader label="Price" field="price" query={query} ta="right" w={90} visibleFrom="sm" />
+            <CatalogSortHeader label="Total" field="amount" query={query} ta="right" w={90} visibleFrom="sm" />
+            <CatalogSortHeader label="In use" field="in_use" query={query} ta="right" w={90} visibleFrom="sm" />
+            <CatalogSortHeader label="Available" field="available" query={query} ta="right" w={90} visibleFrom="sm" />
+            <CatalogSortHeader label="Utilisation" field="utilisation" query={query} w={140} visibleFrom="sm" />
             <TableTh w={52}>
               <VisuallyHidden>Actions</VisuallyHidden>
             </TableTh>
@@ -204,9 +215,10 @@ export function CatalogTable({
                     name={entry.name}
                     itemCount={entry.stock.total}
                     onDeleted={() =>
-                      setEntries((rows) =>
-                        rows.filter((row) => row.id !== entry.id),
-                      )
+                      setBatch((current) => ({
+                        ...current,
+                        entries: current.entries.filter((row) => row.id !== entry.id),
+                      }))
                     }
                   />
                 </TableTd>
@@ -216,7 +228,7 @@ export function CatalogTable({
         </TableTbody>
       </Table>
       <Group ref={ref} justify="center" py="sm">
-        {loading ? (
+        {loading || pending ? (
           <Loader size="xs" />
         ) : (
           <Text size="xs" c="dimmed" className="tabular">
