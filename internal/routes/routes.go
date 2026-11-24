@@ -39,6 +39,7 @@ func New(api handlers.API, ready func(context.Context) error, opts Options) *fib
 	})
 	v := app.Group("/api/v1")
 	v.Get("/summary", h.Summary)
+	v.Get("/bom/graph", h.BOMGraph)
 	v.Get("/metadata/schema", h.MetadataSchema)
 	v.Post("/metadata/validate", h.ValidateMetadata)
 	v.Post("/uploads", handlers.UploadImage(opts.Images))

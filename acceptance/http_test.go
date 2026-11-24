@@ -129,6 +129,87 @@ func expectError(t *testing.T, data map[string]any, code, constraint string) {
 	}
 }
 
+func TestHTTPBOMGraph(t *testing.T) {
+	app := realAPI(t)
+	const graphPath = "/api/v1/bom/graph"
+	empty := request(t, app, "GET", graphPath, nil, 200)
+	if len(empty["units"].([]any)) != 0 || len(empty["slots"].([]any)) != 0 {
+		t.Fatalf("expected an empty graph: %+v", empty)
+	}
+
+	part := func(sku string) string {
+		return id(t, request(t, app, "POST", "/api/v1/parts", object("sku", sku, "name", sku), 201))
+	}
+	root, module, leaf, standalone, archived := part("ROOT"), part("MODULE"), part("LEAF"), part("STANDALONE"), part("ARCHIVED")
+	addSlot := func(parent, child, slot string, quantity int) {
+		request(t, app, "POST", "/api/v1/parts/"+parent+"/components", object("child_part_id", child, "slot", slot, "required_quantity", quantity), 201)
+	}
+	addSlot(root, module, "module", 1)
+	addSlot(module, leaf, "fastener", 4)
+	addSlot(root, leaf, "spare", 2)
+	addSlot(archived, leaf, "retained", 3)
+	request(t, app, "DELETE", "/api/v1/parts/"+archived, nil, 204)
+
+	active := request(t, app, "GET", graphPath, nil, 200)
+	if len(active["units"].([]any)) != 4 || len(active["slots"].([]any)) != 3 {
+		t.Fatalf("expected active units and slots only: %+v", active)
+	}
+	all := request(t, app, "GET", graphPath+"?include_archived=true", nil, 200)
+	nodes := map[string]map[string]any{}
+	for _, value := range all["units"].([]any) {
+		node := value.(map[string]any)
+		nodes[id(t, node)] = node
+	}
+	if len(nodes) != 5 || nodes[standalone]["sku"] != "STANDALONE" || nodes[archived]["archived_at"] == nil {
+		t.Fatalf("graph is missing standalone or archived units: %+v", nodes)
+	}
+	slots := map[string]map[string]any{}
+	for _, value := range all["slots"].([]any) {
+		slot := value.(map[string]any)
+		slots[slot["slot"].(string)] = slot
+	}
+	if len(slots) != 4 || slots["fastener"]["child_part_id"] != leaf ||
+		slots["fastener"]["required_quantity"] != float64(4) ||
+		slots["retained"]["parent_part_id"] != archived {
+		t.Fatalf("graph is missing BOM relationships: %+v", slots)
+	}
+	request(t, app, "GET", graphPath+"?include_archived=yes", nil, 400)
+}
+
+func TestHTTPPartsWithBOM(t *testing.T) {
+	app := realAPI(t)
+	part := func(sku, name string) string {
+		return id(t, request(t, app, "POST", "/api/v1/parts", object("sku", sku, "name", name), 201))
+	}
+	leaf := part("ADAPTER", "Catalog adapter")
+	bench := part("BENCH", "Catalog bench")
+	cabinet := part("CABINET", "Catalog cabinet")
+	drawer := part("DRAWER", "Catalog drawer")
+	fixture := part("FIXTURE", "Fixture")
+	addSlot := func(parent, slot string) {
+		request(t, app, "POST", "/api/v1/parts/"+parent+"/components", object("child_part_id", leaf, "slot", slot, "required_quantity", 1), 201)
+	}
+	for _, parent := range []string{bench, cabinet, drawer, fixture} {
+		addSlot(parent, "mount")
+	}
+	addSlot(bench, "spare_mount")
+	request(t, app, "DELETE", "/api/v1/parts/"+drawer, nil, 204)
+
+	path := "/api/v1/parts?search=Catalog&sort=name&limit=1"
+	filtered := request(t, app, "GET", path+"&has_bom=true&offset=1", nil, 200)
+	rows := filtered["data"].([]any)
+	if filtered["total"] != float64(2) || len(rows) != 1 || id(t, rows[0].(map[string]any)) != cabinet {
+		t.Fatalf("filtered page: %+v", filtered)
+	}
+
+	all := request(t, app, "GET", path+"&has_bom=false", nil, 200)
+	rows = all["data"].([]any)
+	if all["total"] != float64(3) || len(rows) != 1 || id(t, rows[0].(map[string]any)) != leaf {
+		t.Fatalf("unfiltered page: %+v", all)
+	}
+	request(t, app, "GET", path+"&has_bom=yes", nil, 400)
+}
+
 func TestHTTPBuildReplaceAndArchive(t *testing.T) {
 	app := realAPI(t)
 	part := func(sku string) string {

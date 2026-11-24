@@ -5,6 +5,7 @@ import {
   Alert,
   Box,
   Button,
+  Flex,
   Group,
   NumberInput,
   Select,
@@ -17,9 +18,10 @@ import {
   TableTr,
   Text,
   TextInput,
+  VisuallyHidden,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconLock, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useRouter } from "@/libs/nav";
 import { useEffect, useState, useTransition } from "react";
 
@@ -32,7 +34,9 @@ import {
   updateBomChild,
 } from "@/app/actions";
 import {
+  imageUrls,
   isPositiveInt,
+  itemsLabel,
   type PartComponent,
   skuHref,
   slotName,
@@ -41,21 +45,36 @@ import {
 import { TextLink } from "./TextLink";
 import { ConfirmModal } from "./ConfirmModal";
 import { errorLines } from "./Metadata";
+import { PartImage } from "./PartImage";
 import { EmptyNote, Section } from "./Section";
 
 interface BomSectionProps {
   partId: string;
   // Direct BOM rows, with child_part loaded
   components: PartComponent[];
-  // The unit has items, which the API keeps matching the current BOM
-  locked: boolean;
+  itemCount: number;
+  assemblyHref?: (id: string) => string;
 }
 
-const LOCKED_NOTE =
-  "This bill of materials stays fixed while the unit has items. Delete its items first to change it.";
+export const BOM_LOCK_EXPLANATION =
+  "Existing inventory items must keep matching the unit’s component requirements. You can edit the BOM once this unit has no items in inventory.";
 
-export function BomSection({ partId, components, locked }: BomSectionProps) {
+function BomLockReason({ itemCount }: { itemCount: number }) {
+  return (
+    <Alert color="gray" icon={<IconLock size={16} />} title="BOM editing locked">
+      This unit has {itemsLabel(itemCount)} in inventory. {BOM_LOCK_EXPLANATION}
+    </Alert>
+  );
+}
+
+export function BomSection({
+  partId,
+  components,
+  itemCount,
+  assemblyHref,
+}: BomSectionProps) {
   const router = useRouter();
+  const locked = itemCount > 0;
   const hasComponents = components.length > 0;
   const [open, setOpen] = useState(hasComponents);
   const [confirming, setConfirming] = useState(false);
@@ -64,7 +83,8 @@ export function BomSection({ partId, components, locked }: BomSectionProps) {
 
   if (!open && !hasComponents) {
     return (
-      <Group gap="sm">
+      <Stack gap="sm" align="flex-start">
+        {locked && <BomLockReason itemCount={itemCount} />}
         <Button
           variant="default"
           leftSection={<IconPlus size={16} />}
@@ -73,13 +93,7 @@ export function BomSection({ partId, components, locked }: BomSectionProps) {
         >
           Add bill of materials
         </Button>
-        {locked && (
-          <Text size="xs" c="dimmed">
-            A unit with items can't get a bill of materials. Delete its items
-            first.
-          </Text>
-        )}
-      </Group>
+      </Stack>
     );
   }
 
@@ -117,8 +131,13 @@ export function BomSection({ partId, components, locked }: BomSectionProps) {
             {error}
           </Alert>
         )}
-        {locked && <EmptyNote>{LOCKED_NOTE}</EmptyNote>}
-        <BomEditor partId={partId} components={components} locked={locked} />
+        {locked && <BomLockReason itemCount={itemCount} />}
+        <BomEditor
+          partId={partId}
+          components={components}
+          locked={locked}
+          assemblyHref={assemblyHref}
+        />
       </Stack>
       <ConfirmModal
         opened={confirming}
@@ -139,11 +158,8 @@ function BomEditor({
   partId,
   components,
   locked,
-}: {
-  partId: string;
-  components: PartComponent[];
-  locked: boolean;
-}) {
+  assemblyHref,
+}: Omit<BomSectionProps, "itemCount"> & { locked: boolean }) {
   const router = useRouter();
   const [errors, setErrors] = useState<string[]>([]);
   const [deleting, setDeleting] = useState<PartComponent | null>(null);
@@ -165,13 +181,19 @@ function BomEditor({
         </EmptyNote>
       ) : (
         <Box style={{ overflowX: "auto" }} mx="-md">
-          <Table verticalSpacing={8} horizontalSpacing="md" miw={560}>
+          <Table
+            className="bom-editor-table"
+            verticalSpacing={8}
+            horizontalSpacing="var(--bom-cell-padding, var(--mantine-spacing-md))"
+          >
             <TableThead>
               <TableTr>
                 <TableTh>Component</TableTh>
                 <TableTh>Slot</TableTh>
-                <TableTh w={110}>Qty</TableTh>
-                <TableTh w={120} />
+                <TableTh w="var(--bom-quantity-width, 110px)">Qty</TableTh>
+                <TableTh w="var(--bom-actions-width, 120px)">
+                  <VisuallyHidden>Actions</VisuallyHidden>
+                </TableTh>
               </TableTr>
             </TableThead>
             <TableTbody>
@@ -181,6 +203,7 @@ function BomEditor({
                   component={component}
                   pending={pending}
                   locked={locked}
+                  assemblyHref={assemblyHref}
                   onSave={(patch) =>
                     run(() => updateBomChild(partId, component.id, patch))
                   }
@@ -233,12 +256,14 @@ function BomRow({
   component,
   pending,
   locked,
+  assemblyHref,
   onSave,
   onDelete,
 }: {
   component: PartComponent;
   pending: boolean;
   locked: boolean;
+  assemblyHref?: (id: string) => string;
   onSave: (patch: { required_quantity: number }) => void;
   onDelete: () => void;
 }) {
@@ -247,18 +272,46 @@ function BomRow({
   );
   const changed = Number(quantity) !== component.required_quantity;
   const child = component.child_part;
+  const imageUrl = child ? imageUrls(child.metadata)[0] ?? null : null;
+  const nestedBomHref =
+    child && child.component_count && !child.archived_at
+      ? assemblyHref?.(child.id)
+      : undefined;
 
   return (
     <TableTr>
       <TableTd>
-        {child ? (
-          <TextLink href={skuHref(child.sku)}>{child.name}</TextLink>
-        ) : (
-          component.child_part_id.slice(0, 8)
-        )}
+        <Flex
+          align={{ base: "flex-start", sm: "center" }}
+          direction={{ base: "column", sm: "row" }}
+          gap={6}
+        >
+          <Box w={{ base: 28, sm: 36 }} style={{ flexShrink: 0 }}>
+            <PartImage
+              key={imageUrl}
+              src={imageUrl}
+              alt=""
+              ratio={1}
+              radius="var(--mantine-radius-sm)"
+              iconSize={16}
+            />
+          </Box>
+          {child ? (
+            <TextLink href={nestedBomHref ?? skuHref(child.sku)}>
+              {child.name}
+              {nestedBomHref && (
+                <Text span fw={500} size="xs" ml={6}>
+                  BOM
+                </Text>
+              )}
+            </TextLink>
+          ) : (
+            component.child_part_id.slice(0, 8)
+          )}
+        </Flex>
       </TableTd>
       <TableTd>
-        <Text size="sm" c="dimmed" ff="monospace">
+        <Text size="sm" c="gray.7" ff="monospace">
           {component.slot}
         </Text>
       </TableTd>
@@ -275,7 +328,7 @@ function BomRow({
         />
       </TableTd>
       <TableTd>
-        <Group gap="xs" justify="flex-end" wrap="nowrap">
+        <Group gap="xs" justify="flex-end">
           {changed && (
             <Button
               size="xs"

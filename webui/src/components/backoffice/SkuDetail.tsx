@@ -1,10 +1,11 @@
-import { Grid, GridCol, Skeleton, Stack, Text } from "@mantine/core";
+import { Button, Grid, GridCol, Skeleton, Stack, Text } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 
 import { PageError } from "@/app/error";
 import { savePart } from "@/app/actions";
 import { NotFound } from "@/app/not-found";
 import {
+  bomHref,
   imageUrls,
   type Item,
   ITEMS_PAGE_PARAM,
@@ -19,7 +20,7 @@ import {
   textParam,
 } from "@/libs/inventory";
 import { findPartBySku, listItems } from "@/libs/katsukuraApi";
-import { navigate, useRefreshToken } from "@/libs/nav";
+import { Link, navigate, useRefreshToken } from "@/libs/nav";
 
 import { BomSection } from "./BomSection";
 import { DetailsEditor } from "./DetailsEditor";
@@ -128,6 +129,11 @@ function SkuBody({ part, items, page, search }: Loaded) {
       <PageHeader
         trail={[{ href: "/", label: "Units" }]}
         title={part.name}
+        actions={
+          <Button component={Link} href={bomHref(part.id)} variant="default">
+            Open BOM
+          </Button>
+        }
         meta={
           <>
             <IdTag>{part.sku}</IdTag>
@@ -171,7 +177,7 @@ function SkuBody({ part, items, page, search }: Loaded) {
             <BomSection
               partId={part.id}
               components={part.components}
-              locked={(part.stock?.total ?? 0) > 0}
+              itemCount={part.stock?.total ?? 0}
             />
             {usedIn.length > 0 && <UsedIn rows={usedIn} />}
           </Stack>

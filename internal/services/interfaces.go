@@ -23,6 +23,7 @@ type Store interface {
 	DeleteComponent(context.Context, uuid.UUID) error
 	Remove(context.Context, uuid.UUID, uuid.UUID) error
 	Components(context.Context, uuid.UUID) ([]models.PartComponent, error)
+	BOMGraph(context.Context, bool) (models.BOMGraph, error)
 	ParentComponents(context.Context, uuid.UUID) ([]models.PartComponent, error)
 	Installations(context.Context, uuid.UUID, bool) ([]models.ItemComponent, error)
 	Parts(context.Context, models.Filter) (models.Page[models.Part], error)

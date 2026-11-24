@@ -1,6 +1,7 @@
 // Katsukura REST client. The browser calls the API on the same origin.
 
 import {
+  type BomGraph,
   CATALOG_PAGE_SIZE,
   type CatalogEntry,
   type CatalogQuery,
@@ -128,7 +129,7 @@ export function archiveItem(id: string) {
 }
 
 export function getPart(id: string) {
-  return get<PartDetail>(`/parts/${id}`);
+  return get<PartDetail>(`/parts/${encodeURIComponent(id)}`);
 }
 
 export async function findPartBySku(sku: string) {
@@ -149,6 +150,11 @@ type ItemFilter = {
 };
 
 const flag = (on?: boolean) => (on ? "true" : undefined);
+
+export function getBomGraph(includeArchived: boolean) {
+  const path = includeArchived ? "/bom/graph?include_archived=true" : "/bom/graph";
+  return request<BomGraph>(path, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+}
 
 export function listItems(partId: string, filter: ItemFilter = {}) {
   const { limit = 100, offset, search, available, includeArchived } = filter;
@@ -233,7 +239,9 @@ function toEntry(part: Part): CatalogEntry {
     imageUrl: imageUrls(part.metadata)[0] ?? null,
     stock: part.stock ?? { total: 0, in_use: 0, available: 0 },
     componentCount: part.component_count ?? 0,
-    effectiveUnitPrice: part.effective_unit_price ?? part.composite_price ?? "0.00",
+    effectiveUnitPrice:
+      part.effective_unit_price ?? part.unit_price ?? part.composite_price ?? "0.00",
+    hasUnitPriceOverride: part.unit_price != null,
   };
 }
 
@@ -242,6 +250,7 @@ export async function getCatalog(
   query: CatalogQuery,
   pageSize = CATALOG_PAGE_SIZE,
   offset = (query.page - 1) * pageSize,
+  { hasBom = false } = {},
 ) {
   const sort = { default: undefined, name: "name", amount: "items" }[
     query.sort
@@ -250,6 +259,7 @@ export async function getCatalog(
     `/parts?${qs({
       search: query.search,
       sort,
+      has_bom: flag(hasBom),
       limit: pageSize,
       offset,
     })}`,

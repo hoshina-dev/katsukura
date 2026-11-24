@@ -52,6 +52,15 @@ export type PartDetail = Part & {
   parents: PartComponent[];
 };
 
+export type BomUnit = Pick<Part, "id" | "sku" | "name" | "archived_at">;
+
+export type BomSlot = Omit<PartComponent, "child_part" | "parent_part">;
+
+export type BomGraph = {
+  units: BomUnit[];
+  slots: BomSlot[];
+};
+
 export type Item = {
   id: string;
   part_id: string;
@@ -115,6 +124,7 @@ export type CatalogEntry = {
   stock: Stock;
   componentCount: number;
   effectiveUnitPrice: Money;
+  hasUnitPriceOverride: boolean;
 };
 
 export type SearchParams = Record<string, string | string[] | undefined>;
@@ -158,6 +168,10 @@ export function imageUrls(metadata: Metadata) {
 
 export function skuHref(sku: string) {
   return `/units/${encodeURIComponent(sku)}`;
+}
+
+export function bomHref(partId: string) {
+  return `/bom/${encodeURIComponent(partId)}`;
 }
 
 export function itemHref(sku: string, itemId: string) {

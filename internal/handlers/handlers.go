@@ -24,6 +24,7 @@ type API interface {
 	Part(context.Context, uuid.UUID) (*models.PartDetail, error)
 	Item(context.Context, uuid.UUID) (*models.ItemDetail, error)
 	Components(context.Context, uuid.UUID) ([]models.PartComponent, error)
+	BOMGraph(context.Context, bool) (models.BOMGraph, error)
 	CreatePart(context.Context, *models.Part) error
 	CreateItem(context.Context, *models.InventoryItem) error
 	CreateItems(context.Context, uuid.UUID, int, []string) ([]models.InventoryItem, error)
@@ -165,8 +166,19 @@ func (h *Handler) ListParts(c *fiber.Ctx) error {
 	if e != nil {
 		return e
 	}
+	if f.HasBOM, e = flag(c, "has_bom"); e != nil {
+		return e
+	}
 	v, e := h.api.Parts(c.UserContext(), f)
 	return reply(c, 200, v, e)
+}
+func (h *Handler) BOMGraph(c *fiber.Ctx) error {
+	archived, e := flag(c, "include_archived")
+	if e != nil {
+		return e
+	}
+	graph, e := h.api.BOMGraph(c.UserContext(), archived)
+	return reply(c, 200, graph, e)
 }
 func (h *Handler) ListItems(c *fiber.Ctx) error {
 	f, e := filter(c)

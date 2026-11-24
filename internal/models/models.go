@@ -218,6 +218,23 @@ type PartComponent struct {
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
+type BOMGraph struct {
+	Units []BOMUnit `json:"units"`
+	Slots []BOMSlot `json:"slots"`
+}
+type BOMUnit struct {
+	ID         uuid.UUID  `json:"id"`
+	SKU        string     `json:"sku"`
+	Name       string     `json:"name"`
+	ArchivedAt *time.Time `json:"archived_at"`
+}
+type BOMSlot struct {
+	ID               uuid.UUID `json:"id"`
+	ParentPartID     uuid.UUID `json:"parent_part_id"`
+	ChildPartID      uuid.UUID `json:"child_part_id"`
+	Slot             string    `json:"slot"`
+	RequiredQuantity int       `json:"required_quantity"`
+}
 type InventoryItem struct {
 	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
 	PartID       uuid.UUID  `json:"part_id"`
@@ -261,6 +278,7 @@ type Filter struct {
 	Search          string
 	PartID          *uuid.UUID
 	IncludeArchived bool
+	HasBOM          bool
 	// Available: not installed in any item
 	Available bool
 	// Sort orders parts: newest (default), name, items, available_items

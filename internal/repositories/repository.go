@@ -91,6 +91,26 @@ func (r *Repository) Components(ctx context.Context, id uuid.UUID) ([]models.Par
 	e := r.db.WithContext(ctx).Preload("ChildPart").Where("parent_part_id = ?", id).Order("created_at DESC, id DESC").Find(&v).Error
 	return v, e
 }
+func (r *Repository) BOMGraph(ctx context.Context, includeArchived bool) (models.BOMGraph, error) {
+	graph := models.BOMGraph{Units: []models.BOMUnit{}, Slots: []models.BOMSlot{}}
+	db := r.db.WithContext(ctx)
+	units := db.Table("parts").Select("id, sku, name, archived_at")
+	slots := db.Table("part_components pc").Select(
+		"pc.id, pc.parent_part_id, pc.child_part_id, pc.slot, pc.required_quantity",
+	)
+	if !includeArchived {
+		units = units.Where("archived_at IS NULL")
+		slots = slots.
+			Joins("JOIN parts parent ON parent.id = pc.parent_part_id").
+			Joins("JOIN parts child ON child.id = pc.child_part_id").
+			Where("parent.archived_at IS NULL AND child.archived_at IS NULL")
+	}
+	if err := units.Order("lower(name), sku").Find(&graph.Units).Error; err != nil {
+		return graph, err
+	}
+	err := slots.Order("pc.parent_part_id, pc.slot").Find(&graph.Slots).Error
+	return graph, err
+}
 func (r *Repository) ParentComponents(ctx context.Context, id uuid.UUID) ([]models.PartComponent, error) {
 	v := []models.PartComponent{}
 	e := r.db.WithContext(ctx).Preload("ParentPart").Where("child_part_id = ?", id).Order("slot ASC, id ASC").Find(&v).Error
@@ -112,6 +132,9 @@ func (r *Repository) Parts(ctx context.Context, f models.Filter) (models.Page[mo
 	q := r.db.WithContext(ctx).Model(&models.Part{})
 	if !f.IncludeArchived {
 		q = q.Where("archived_at IS NULL")
+	}
+	if f.HasBOM {
+		q = q.Where("EXISTS (SELECT 1 FROM part_components pc WHERE pc.parent_part_id = parts.id)")
 	}
 	if f.Search != "" {
 		q = q.Where("sku ILIKE @s OR name ILIKE @s OR description ILIKE @s", sql.Named("s", like(f.Search)))

@@ -41,6 +41,12 @@ func (s *Service) Parts(ctx context.Context, f models.Filter) (models.Page[model
 	})
 }
 
+func (s *Service) BOMGraph(ctx context.Context, includeArchived bool) (models.BOMGraph, error) {
+	return read(ctx, s, func(r Store) (models.BOMGraph, error) {
+		return r.BOMGraph(ctx, includeArchived)
+	})
+}
+
 // withStock fills each part's item and BOM row counts and resolves prices.
 func withStock(ctx context.Context, r Store, parts []models.Part) error {
 	ids := make([]uuid.UUID, len(parts))

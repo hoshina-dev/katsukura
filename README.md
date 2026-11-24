@@ -10,6 +10,11 @@ backoffice in `webui/` is a Vite and React app using TypeScript, Mantine, and
 Tabler icons. The browser calls `/api/v1` on the same origin. Customer-facing
 browsing lives in another frontend.
 
+Open **BOM** in the backoffice to browse and edit assemblies. Switch to
+**All units** to start a BOM for an existing unit.
+Open **Dependency graph** to explore how units connect across the catalog,
+including standalone and archived units.
+
 ## Run locally
 
 Requirements: Go 1.26.2+, Node 22+, pnpm 11.25.0, and PostgreSQL 17+ or Docker.
@@ -130,9 +135,10 @@ All endpoints use `/api/v1`. JSON field names use snake_case. Lists return
 
 | Resource | Operations |
 |---|---|
-| `/parts` | List/search/paginate and create SKU schemas; each listed part has `stock` (`total`, `in_use`, `available` item counts) and prices; create accepts `serial_aware` (bool, default true) |
+| `/parts` | List/search/paginate and create SKU schemas; `has_bom=true` lists only assemblies; each listed part has `stock` (`total`, `in_use`, `available` item counts) and prices; create accepts `serial_aware` (bool, default true) |
 | `/parts/:id` | Read with BOM, `stock`, and prices; edit, archive, restore |
 | `/parts/:id/components` | List and add BOM requirements |
+| `/bom/graph` | Read all unit nodes and BOM slots in one snapshot. Pass `include_archived=true` to include archived units and their retained relationships. |
 | `/parts/:id/items` | POST `{count, serial_numbers?}` (1–1000) to build items in one transaction, each with a copy of the part's metadata and its BOM filled from stock; for serial-aware parts, `serial_numbers` has one entry per item and a blank or missing entry gets a generated `RF-SN-` serial number; for parts with `serial_aware` false, serials stay null and a non-blank `serial_numbers` entry is rejected |
 | `/parts/:id/components/:componentID` | Edit or delete a requirement |
 | `/inventory` | List/search/filter/paginate and create physical items; an installed item has `parent`, its active installation with `parent_item` |
